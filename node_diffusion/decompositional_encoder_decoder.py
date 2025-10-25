@@ -436,14 +436,7 @@ class DecompositionalNodeEncoderDecoder(object):
         graphs: List[nx.Graph],
         locality_sample_fraction: float # <-- New parameter
     ) -> None:
-        """
-        Trains the adjacency matrix classifier using node encodings and graphs.
-        Converts graphs to adjacency matrices and creates a training dataset.
-        
-        Parameters:
-            node_encodings_list: List of numpy arrays containing node encodings.
-            graphs         : List of NetworkX graph objects.
-        """
+        """Train the adjacency classifier on features derived from the provided graphs."""
         # Convert graphs to corresponding adjacency matrices.
         adj_mtx_list = self.graphs_to_adjacency_matrices(graphs)
         # Build the training dataset.
@@ -464,26 +457,7 @@ class DecompositionalNodeEncoderDecoder(object):
         node_encodings_list: List[np.ndarray],
         locality_sample_fraction_for_adj_mtx: float  # <-- New parameter (unchanged)
     ) -> 'DecompositionalNodeEncoderDecoder':
-        """
-        Fits the node-, edge- and adjacency-matrix classifiers.
-
-        Instead of repeatedly refitting with warm starts, we build one
-        big augmented dataset (original + noisy variants) and train once.
-
-        Parameters
-        ----------
-        graphs : List[nx.Graph]
-            Original graphs.
-        node_encodings_list : List[np.ndarray]
-            Original node-level embeddings (one array per graph).
-        locality_sample_fraction_for_adj_mtx : float
-            Fraction of edges to sample when training the adjacency-matrix predictor.
-
-        Returns
-        -------
-        DecompositionalNodeEncoderDecoder
-            Self (trained).
-        """
+        """Train the node, edge, and adjacency predictors on the supplied dataset."""
 
         # ------------------------------------------------------------------
         # 1. Build augmented dataset
@@ -677,25 +651,12 @@ class DecompositionalNodeEncoderDecoder(object):
         return graphs
     
     def save(self, filename: str = 'generative_model.obj') -> None:
-        """
-        Saves the current instance of the model to a file using pickle.
-        
-        Parameters:
-            filename: The file name or path where the model object will be saved.
-        """
+        """Serialise the current object to `filename` using pickle."""
         with open(filename, 'wb') as f:
             pickle.dump(self, f)
     
     def load(self, filename: str = 'generative_model.obj') -> 'DecompositionalNodeEncoderDecoder':
-        """
-        Loads a model instance from a file.
-        
-        Parameters:
-            filename: The file name or path from which the model object will be loaded.
-        
-        Returns:
-            The loaded model object.
-        """
+        """Load a previously saved instance from disk and return it."""
         with open(filename, 'rb') as f:
             self = pickle.load(f)
         return self
@@ -704,26 +665,13 @@ class DecompositionalNodeEncoderDecoder(object):
 # ConditionalNodeGeneratorModel Class
 # =============================================================================
 class ConditionalNodeGeneratorModel(object):
-    """
-    ConditionalNodeGeneratorModel
-
-    Provides a wrapper around a transformer-based conditional diffusion generator.
-    It models node encodings conditioned on graph-level features and offers methods for training, 
-    prediction, and sampling of node encoding matrices.
-    """
+    """Thin wrapper that delegates training and inference to a conditional node generator."""
     def __init__(
             self, 
             conditional_node_generator: Optional[ConditionalNodeGeneratorBase] = None,
             verbose: bool = True
             ) -> None:
-        """
-        Initializes the DecompositionalNodeTransformerConditionalDiffusionModel instance.
-
-        Parameters:
-            conditional_node_generator: An instance of ConditionalNodeGeneratorBase
-                used for generating node encodings based on conditioning inputs.
-            verbose: Boolean flag to enable or disable verbose logging.
-        """
+        """Clone the supplied generator and persist the verbosity preference."""
         self.conditional_node_generator = copy.deepcopy(conditional_node_generator)
         self.verbose = verbose
 
@@ -786,14 +734,7 @@ class ConditionalNodeGeneratorModel(object):
 # =============================================================================
 
 class DecompositionalEncoderDecoder(object):
-    """
-    DecompositionalEncoderDecoder
-
-    Integrates a full encoder-decoder pipeline that maps graphs to conditioned node embeddings
-    and reconstructs graphs from these embeddings. It combines graph vectorization, node encoding,
-    and conditional generation to support tasks such as training, unconditional sampling, conditional
-    sampling, interpolation, and mean graph computation.
-    """
+    """End-to-end manager that vectorises graphs, trains generators, and rebuilds structures."""
     def __init__(
             self,
             graph_vectorizer: Any = None,
@@ -805,21 +746,7 @@ class DecompositionalEncoderDecoder(object):
             locality_sample_fraction: float = 1.0,
             locality_horizon: int = 1
             ) -> None:
-        """
-        Initializes the DecompositionalEncoderDecoder instance.
-
-        Parameters:
-            ...
-            graph_vectorizer: Object responsible for converting graphs into global conditioning vectors.
-            node_graph_vectorizer: Object responsible for encoding individual graph nodes.
-            conditioning_to_node_embeddings_generator: Generator that maps conditioning vectors to node embeddings.
-            node_embeddings_to_graph_generator: Generator that reconstructs graphs from node embeddings.
-            verbose: Boolean flag to enable or disable verbose logging.
-            use_locality_supervision: Whether to use locality supervision during training.
-            locality_sample_fraction: Fraction of locality pairs to retain when supervision is enabled (default=1.0).
-            locality_horizon: Positive integer specifying the maximum graph distance to treat
-                as a positive locality relation when preparing supervision for the conditional generator.
-        """
+        """Store the collaborating components and configuration used for the pipeline."""
         self.graph_vectorizer = graph_vectorizer
         self.node_graph_vectorizer = node_graph_vectorizer
         self.conditioning_to_node_embeddings_generator = conditioning_to_node_embeddings_generator
@@ -834,9 +761,7 @@ class DecompositionalEncoderDecoder(object):
         self.locality_horizon = locality_horizon
 
     def toggle_verbose(self) -> None:
-        """
-        Toggles verbosity on all sub-components.
-        """
+        """Flip verbosity for this instance and any nested generators."""
         self.verbose = not self.verbose
         if self.conditioning_to_node_embeddings_generator is not None:
             self.conditioning_to_node_embeddings_generator.verbose = self.verbose
@@ -893,47 +818,26 @@ class DecompositionalEncoderDecoder(object):
 
     @timeit
     def node_encode(self, graphs: List[nx.Graph]) -> List[np.ndarray]:
-        """
-        Node-level embeddings for each graph.
-        """
+        """Transform graphs into per-node embedding matrices."""
         if self.verbose:
             print(f"Node encoding {len(graphs)} graphs")
         return self.node_graph_vectorizer.transform(graphs)
 
     @timeit
     def graph_encode(self, graphs: List[nx.Graph]) -> List[np.ndarray]:
-        """
-        Global conditioning vectors for each graph.
-        """
+        """Transform graphs into global conditioning vectors."""
         if self.verbose:
             print(f"Encoding {len(graphs)} graphs")
         return self.graph_vectorizer.transform(graphs)
 
     def encode(self, graphs: List[nx.Graph]) -> Tuple[List[np.ndarray], Any]:
-        """
-        Returns tuple (node_encodings_list, conditioning_vectors).
-        """
+        """Produce both node-level encodings and their matching conditioning vectors."""
         node_encs = self.node_encode(graphs)
         cond_encs = self.graph_encode(graphs)
         return node_encs, cond_encs
 
     def decode(self, conditioning_vectors: Any, desired_class: Optional[Union[int, Sequence[int]]] = None) -> List[nx.Graph]:
-        """
-        Decode conditioning vectors to graphs via node embeddings.
-
-        Parameters
-        ----------
-        conditioning_vectors : Any
-            The conditioning vectors to decode
-        desired_class : Optional[Union[int, Sequence[int]]], default=None
-            If provided, guides the generation toward the specified class(es)
-            using classifier guidance.
-        
-        Returns
-        -------
-        List[nx.Graph]
-            The decoded graphs
-        """
+        """Decode conditioning vectors into reconstructed graphs."""
         if self.verbose:
             print(f"Decoding {len(conditioning_vectors)} conditioning vectors")
             if desired_class is not None:
@@ -946,17 +850,7 @@ class DecompositionalEncoderDecoder(object):
 
     @timeit
     def sample(self, n_samples: int = 1, desired_class: Optional[Union[int, Sequence[int]]] = None) -> List[nx.Graph]:
-        """
-        Unconditional sampling: cond->node_embeddings->graphs.
-
-        Parameters
-        ----------
-        n_samples : int, default=1
-            Number of samples to generate
-        desired_class : Optional[Union[int, Sequence[int]]], default=None
-            If provided, guides the generation toward the specified class(es)
-            using classifier guidance.
-        """
+        """Generate random graphs by sampling conditioning vectors from the prior."""
         if self.verbose:
             print(f"Sampling {n_samples} graphs")
             if desired_class is not None:
@@ -974,19 +868,7 @@ class DecompositionalEncoderDecoder(object):
         n_samples: int = 1,
         desired_class: Optional[Union[int, Sequence[int]]] = None
     ) -> List[List[nx.Graph]]:
-        """
-        Conditional sampling: graphs->cond_encs->y_samples->node_feats->graphs.
-
-        Parameters
-        ----------
-        graphs : List[nx.Graph]
-            Input graphs to condition on
-        n_samples : int, default=1
-            Number of samples per input graph
-        desired_class : Optional[Union[int, Sequence[int]]], default=None
-            If provided, guides the generation toward the specified class(es)
-            using classifier guidance.
-        """
+        """Sample multiple graphs per input by conditioning on each graph's encoding."""
         _, cond_encs = self.encode(graphs)
         cond_encs = [[cond_enc]*n_samples for cond_enc in cond_encs]
         
@@ -1015,9 +897,7 @@ class DecompositionalEncoderDecoder(object):
         t_start: float = 0.0,
         t_end: float = 1.0
     ) -> List[nx.Graph]:
-        """
-        Interpolate between G1 and G2 in specified mode.
-        """
+        """Interpolate between two graphs by SLERP-ing their condition vectors."""
         ts = np.linspace(t_start, t_end, n_steps)
         results = []
         emb1 = self.graph_vectorizer.transform([G1])[0]
@@ -1032,19 +912,14 @@ class DecompositionalEncoderDecoder(object):
         self,
         graphs: List[nx.Graph]
     ) -> nx.Graph:
-        """
-        Compute a centroid graph from a list of input graphs.
-        """
+        """Compute a geometric mean graph via the SLERP barycentre of encodings."""
         Y = np.vstack(self.graph_vectorizer.transform(graphs))
         centroid = scaled_slerp_average(Y)
         return self.decode([centroid])[0]
     
     @timeit
     def fit_classifier(self, graphs, targets, epochs=20, lr=1e-3):
-        """
-        Fits a classifier for conditional guidance based on provided graphs and targets.
-        Automatically sets up the guidance classifier and plots training/validation loss.
-        """
+        """Train the optional guidance classifier on supplied graphs and labels."""
         # --- Step 1: Encode inputs ---
         node_encs = self.node_graph_vectorizer.transform(graphs)  # List of node arrays
         cond_vecs = self.graph_vectorizer.transform(graphs)       # 2D array
