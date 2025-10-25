@@ -842,7 +842,7 @@ class IterativeDenoisingAutoencoderTransformerModel(pl.LightningModule):
         global_condition: torch.Tensor,
         total_steps: int = 200,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
-        use_heads_projection: bool = True,   # NEW: use exist/deg heads to “snap” outputs
+        use_heads_projection: bool = False,   # NEW: use exist/deg heads to “snap” outputs
         exist_threshold: float = 0.5,        # threshold in prob space
     ) -> torch.Tensor:
         """
