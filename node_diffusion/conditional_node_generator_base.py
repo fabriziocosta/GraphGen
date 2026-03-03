@@ -29,6 +29,8 @@ class ConditionalNodeGeneratorBase:
         conditional_graph_encodings: Any,
         edge_pairs: Optional[List[Tuple[int, int, int]]] = None,
         edge_targets: Optional[np.ndarray] = None,
+        edge_label_pairs: Optional[List[Tuple[int, int, int]]] = None,
+        edge_label_targets: Optional[np.ndarray] = None,
         auxiliary_edge_pairs: Optional[List[Tuple[int, int, int]]] = None,
         auxiliary_edge_targets: Optional[np.ndarray] = None,
         node_mask: Optional[np.ndarray] = None,
