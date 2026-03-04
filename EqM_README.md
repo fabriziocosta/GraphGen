@@ -1,16 +1,16 @@
-# EqM Conditional Node Generator
+# EqM Decompositional Node Generator
 
-This document explains the `EqMConditionalNodeGenerator` implemented in this repository, how it differs from the diffusion-based generator, what equations it uses during training and sampling, and how the surrounding graph-generation pipeline fits together.
+This document explains the `EqMDecompositionalNodeGenerator` implemented in this repository, how it differs from the diffusion-based generator, what equations it uses during training and sampling, and how the surrounding graph-generation pipeline fits together.
 
-The implementation lives primarily in [node_diffusion/eqm_conditional_node_generator.py](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/node_diffusion/eqm_conditional_node_generator.py).
+The implementation lives primarily in [eqm_conditional_node_generator.py](/home/fabrizio/work/GraphGen/eqm_decompositional_graph_generator/eqm_conditional_node_generator.py).
 
 ## Overview
 
-The repo now contains two related conditional node generators:
+The repo now contains an archived diffusion generator and one maintained EqM generator:
 
 - `ConditionalNodeGenerator`
   A diffusion-style conditional denoising model.
-- `EqMConditionalNodeGenerator`
+- `EqMDecompositionalNodeGenerator`
   A stationary, energy-based conditional generator inspired by Equilibrium Matching (EqM).
 
 The EqM model replaces diffusion time-conditioning and reverse-time denoising with:
@@ -577,11 +577,11 @@ if the conditioning input is tokenized.
 In other words, the supported path in the current code is:
 
 1. `graph_encode(graphs)`
-   This extracts graph features from a real graph and concatenates the corresponding
-   empirical node-label histogram automatically.
+   This extracts graph features, node counts, and edge counts from a real graph.
 
-`EqMConditionalNodeGenerator` no longer supports a separate user-specified histogram
-override at generation time. The histogram is part of the conditioning vector itself.
+`EqMDecompositionalNodeGenerator` no longer relies on an embedded node-label histogram
+inside the conditioning vector. Label histograms are evaluated after generation rather
+than injected directly as conditioning.
 
 ## Padding and Masking
 

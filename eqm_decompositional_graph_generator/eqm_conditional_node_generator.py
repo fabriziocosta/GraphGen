@@ -1,6 +1,5 @@
 import contextlib
 import os
-import tempfile
 import uuid
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -189,7 +188,7 @@ def collate_eqm_graph_with_edges(batch):
     return X, Y, edge_idx, edge_lbl, edge_label_idx, edge_label_tgt, aux_edge_idx, aux_edge_lbl, M, D
 
 
-class EqMConditionalNodeGeneratorModule(pl.LightningModule):
+class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
     """Conditional EqM model with an explicit scalar energy and score via autograd."""
 
     def __init__(
@@ -210,6 +209,7 @@ class EqMConditionalNodeGeneratorModule(pl.LightningModule):
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
         restore_best_checkpoint: bool = True,
+        checkpoint_root_dir: Optional[str] = None,
         important_feature_index: int = 1,
         max_degree: Optional[int] = None,
         lambda_degree_importance: float = 1.0,
@@ -264,6 +264,10 @@ class EqMConditionalNodeGeneratorModule(pl.LightningModule):
         self.early_stopping_patience = int(early_stopping_patience)
         self.early_stopping_min_delta = float(early_stopping_min_delta)
         self.restore_best_checkpoint = bool(restore_best_checkpoint)
+        if checkpoint_root_dir is None:
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            checkpoint_root_dir = os.path.join(repo_root, ".checkpoints", "eqm")
+        self.checkpoint_root_dir = str(checkpoint_root_dir)
         self.important_feature_index = important_feature_index
         self.max_degree = int(max_degree)
         self.lambda_degree_importance = lambda_degree_importance
@@ -781,10 +785,10 @@ class EqMConditionalNodeGeneratorModule(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
     def set_guidance_classifier(self, num_classes: int) -> None:
-        raise NotImplementedError("Classifier guidance is not implemented for EqMConditionalNodeGenerator phase 1.")
+        raise NotImplementedError("Classifier guidance is not implemented for EqMDecompositionalNodeGenerator.")
 
     def train_guidance_classifier(self, *args, **kwargs):
-        raise NotImplementedError("Classifier guidance is not implemented for EqMConditionalNodeGenerator phase 1.")
+        raise NotImplementedError("Classifier guidance is not implemented for EqMDecompositionalNodeGenerator.")
 
     def generate(
         self,
@@ -865,7 +869,7 @@ class EqMConditionalNodeGeneratorModule(pl.LightningModule):
         return x.detach()
 
 
-class EqMConditionalNodeGenerator(ConditionalNodeGeneratorBase):
+class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
     """Scikit-learn friendly facade for a conditional EqM node generator."""
 
     def __init__(
@@ -886,6 +890,7 @@ class EqMConditionalNodeGenerator(ConditionalNodeGeneratorBase):
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
         restore_best_checkpoint: bool = True,
+        checkpoint_root_dir: Optional[str] = None,
         important_feature_index: int = 1,
         lambda_degree_importance: float = 1.0,
         noise_degree_factor: float = 2.0,
@@ -921,6 +926,10 @@ class EqMConditionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.early_stopping_patience = int(early_stopping_patience)
         self.early_stopping_min_delta = float(early_stopping_min_delta)
         self.restore_best_checkpoint = bool(restore_best_checkpoint)
+        if checkpoint_root_dir is None:
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            checkpoint_root_dir = os.path.join(repo_root, ".checkpoints", "eqm")
+        self.checkpoint_root_dir = str(checkpoint_root_dir)
         self.important_feature_index = important_feature_index
         self.lambda_degree_importance = lambda_degree_importance
         self.noise_degree_factor = float(noise_degree_factor)
@@ -965,7 +974,7 @@ class EqMConditionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.best_checkpoint_score_ = None
 
         if self.use_guidance:
-            raise ValueError("EqMConditionalNodeGenerator phase 1 does not implement classifier guidance.")
+            raise ValueError("EqMDecompositionalNodeGenerator does not implement classifier guidance.")
 
     def _plan_channel(self, channel_name: str):
         """Return the named channel from the orchestration supervision plan when available."""
@@ -1270,7 +1279,7 @@ class EqMConditionalNodeGenerator(ConditionalNodeGeneratorBase):
             if effective_auxiliary_locality:
                 print(f"Auxiliary-locality BCE positive weight: {auxiliary_edge_pos_weight:.3f}.")
 
-        self.model = EqMConditionalNodeGeneratorModule(
+        self.model = EqMDecompositionalNodeGeneratorModule(
             number_of_rows_per_example=self.number_of_rows_per_example,
             input_feature_dimension=self.input_feature_dimension,
             condition_feature_dimension=self.condition_feature_dimension,
@@ -1405,10 +1414,10 @@ class EqMConditionalNodeGenerator(ConditionalNodeGeneratorBase):
 
         callbacks = [MetricsLogger()]
         checkpoint_dir = os.path.join(
-            tempfile.gettempdir(),
-            "graphgen_eqm_checkpoints",
+            self.checkpoint_root_dir,
             f"{self.__class__.__name__}_{uuid.uuid4().hex}",
         )
+        os.makedirs(checkpoint_dir, exist_ok=True)
         checkpoint_callback = ModelCheckpoint(
             dirpath=checkpoint_dir,
             filename="best-{epoch:03d}-{val_total:.4f}",
@@ -1420,6 +1429,8 @@ class EqMConditionalNodeGenerator(ConditionalNodeGeneratorBase):
             save_weights_only=False,
         )
         callbacks.append(checkpoint_callback)
+        if int(self.verbose) >= 1:
+            print(f"Writing checkpoints to {checkpoint_dir}")
         if self.enable_early_stopping:
             callbacks.append(
                 EarlyStopping(
@@ -1476,7 +1487,7 @@ class EqMConditionalNodeGenerator(ConditionalNodeGeneratorBase):
         desired_class: Optional[Union[int, Sequence[int]]] = None,
     ) -> GeneratedNodeBatch:
         if desired_class is not None and int(self.verbose) >= 3:
-            print("EqMConditionalNodeGenerator phase 1 ignores desired_class because classifier guidance is not implemented.")
+            print("EqMDecompositionalNodeGenerator ignores desired_class because classifier guidance is not implemented.")
 
         self.device = next(self.model.parameters()).device
         cond_array = self._compose_condition_array(graph_conditioning)

@@ -101,10 +101,10 @@ def scaled_slerp_average(vectors: np.ndarray) -> np.ndarray:
 np.seterr(invalid='ignore', divide='ignore')
 
 # =============================================================================
-# GraphDecoder Class
+# EqMDecompositionalGraphDecoder Class
 # =============================================================================
 
-class GraphDecoder(object):
+class EqMDecompositionalGraphDecoder(object):
     """Graph decoder that turns generator outputs into final NetworkX graphs."""
     
     def __init__(
@@ -693,16 +693,16 @@ class GraphDecoder(object):
         with open(filename, 'wb') as f:
             pickle.dump(self, f)
     
-    def load(self, filename: str = 'generative_model.obj') -> 'GraphDecoder':
+    def load(self, filename: str = 'generative_model.obj') -> 'EqMDecompositionalGraphDecoder':
         """Load a previously saved instance from disk and return it."""
         with open(filename, 'rb') as f:
             self = pickle.load(f)
         return self
 
 # =============================================================================
-# ConditionedNodeGenerator Class
+# EqMDecompositionalConditionedNodeGenerator Class
 # =============================================================================
-class ConditionedNodeGenerator(object):
+class EqMDecompositionalConditionedNodeGenerator(object):
     """Thin wrapper that delegates training and inference to a conditional node generator."""
     def __init__(
             self, 
@@ -718,7 +718,7 @@ class ConditionedNodeGenerator(object):
         self,
         node_batch: NodeGenerationBatch,
         graph_conditioning: GraphConditioningBatch,
-    ) -> 'ConditionedNodeGenerator':
+    ) -> 'EqMDecompositionalConditionedNodeGenerator':
         if self.verbose:
             print(
                 f"Training conditional model on {len(node_batch)} graphs "
@@ -753,17 +753,17 @@ class ConditionedNodeGenerator(object):
         return generated_nodes
     
 # =============================================================================
-# GraphGenerator Class 
+# EqMDecompositionalGraphGenerator Class 
 # =============================================================================
 
-class GraphGenerator(object):
+class EqMDecompositionalGraphGenerator(object):
     """End-to-end manager that vectorises graphs, trains generators, and rebuilds structures."""
     def __init__(
             self,
             graph_vectorizer: Any = None,
             node_graph_vectorizer: Any = None,
-            node_generator: Optional[ConditionedNodeGenerator] = None,
-            graph_decoder: Optional[GraphDecoder] = None,
+            node_generator: Optional[EqMDecompositionalConditionedNodeGenerator] = None,
+            graph_decoder: Optional[EqMDecompositionalGraphDecoder] = None,
             verbose: bool = True,
             use_locality_supervision: bool = False,
             locality_sample_fraction: float = 1.0,
@@ -931,7 +931,7 @@ class GraphGenerator(object):
         self,
         graphs: List[nx.Graph],
         train_node_generator: bool = True,
-    ) -> 'GraphGenerator':
+    ) -> 'EqMDecompositionalGraphGenerator':
         if self.verbose:
             print(f"Fitting model on {len(graphs)} graphs")
 

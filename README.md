@@ -3,9 +3,9 @@
 GraphGen now maintains the Equilibrium Matching generator as the supported path for conditional graph generation.
 
 ## Maintained Surface
-- `node_diffusion/eqm_conditional_node_generator.py` – supported conditional generator backend.
-- `node_diffusion/decompositional_encoder_decoder.py` – orchestration, supervision planning, graph encode/decode, and optimization-based final decoding.
-- `node_diffusion/generator_shared.py` – shared transformer, edge-head, plotting, and metric utilities used by the maintained generator.
+- `eqm_decompositional_graph_generator/eqm_conditional_node_generator.py` – supported conditional generator backend.
+- `eqm_decompositional_graph_generator/decompositional_encoder_decoder.py` – orchestration, supervision planning, graph encode/decode, and optimization-based final decoding.
+- `eqm_decompositional_graph_generator/generator_shared.py` – shared transformer, edge-head, plotting, and metric utilities used by the maintained generator.
 - `notebooks/demo_eqm.ipynb` – maintained end-to-end notebook.
 - `EqM_README.md` – detailed notes on the EqM formulation and implementation.
 
@@ -31,11 +31,13 @@ These files are kept for historical reference and older experiments. They are no
 
 ## Quick Start
 ```python
-from node_diffusion.eqm_conditional_node_generator import EqMConditionalNodeGenerator
-from node_diffusion.decompositional_encoder_decoder import (
-    ConditionalNodeGeneratorModel,
-    DecompositionalEncoderDecoder,
-    DecompositionalNodeEncoderDecoder,
+from eqm_decompositional_graph_generator.eqm_conditional_node_generator import (
+    EqMDecompositionalNodeGenerator,
+)
+from eqm_decompositional_graph_generator.graph_generator import (
+    EqMDecompositionalConditionedNodeGenerator,
+    EqMDecompositionalGraphDecoder,
+    EqMDecompositionalGraphGenerator,
 )
 ```
 
