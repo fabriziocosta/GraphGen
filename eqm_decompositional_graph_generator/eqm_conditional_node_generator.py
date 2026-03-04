@@ -209,6 +209,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
         restore_best_checkpoint: bool = True,
+        artifact_root_dir: Optional[str] = None,
         checkpoint_root_dir: Optional[str] = None,
         important_feature_index: int = 1,
         max_degree: Optional[int] = None,
@@ -264,9 +265,12 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         self.early_stopping_patience = int(early_stopping_patience)
         self.early_stopping_min_delta = float(early_stopping_min_delta)
         self.restore_best_checkpoint = bool(restore_best_checkpoint)
-        if checkpoint_root_dir is None:
+        if artifact_root_dir is None:
             repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            checkpoint_root_dir = os.path.join(repo_root, ".checkpoints", "eqm")
+            artifact_root_dir = os.path.join(repo_root, ".artifacts")
+        self.artifact_root_dir = str(artifact_root_dir)
+        if checkpoint_root_dir is None:
+            checkpoint_root_dir = os.path.join(self.artifact_root_dir, "checkpoints", "eqm")
         self.checkpoint_root_dir = str(checkpoint_root_dir)
         self.important_feature_index = important_feature_index
         self.max_degree = int(max_degree)
@@ -890,6 +894,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
         restore_best_checkpoint: bool = True,
+        artifact_root_dir: Optional[str] = None,
         checkpoint_root_dir: Optional[str] = None,
         important_feature_index: int = 1,
         lambda_degree_importance: float = 1.0,
@@ -901,9 +906,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         lambda_locality_importance: float = 1.0,
         lambda_auxiliary_locality_importance: float = 1.0,
         lambda_edge_label_importance: float = 1.0,
-        use_guidance: bool = False,
         pool_condition_tokens: bool = False,
-        use_locality_supervision: bool = False,
         eqm_sigma: float = 0.2,
         sampling_step_size: float = 0.05,
         sampling_steps: Optional[int] = None,
@@ -926,9 +929,12 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.early_stopping_patience = int(early_stopping_patience)
         self.early_stopping_min_delta = float(early_stopping_min_delta)
         self.restore_best_checkpoint = bool(restore_best_checkpoint)
-        if checkpoint_root_dir is None:
+        if artifact_root_dir is None:
             repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            checkpoint_root_dir = os.path.join(repo_root, ".checkpoints", "eqm")
+            artifact_root_dir = os.path.join(repo_root, ".artifacts")
+        self.artifact_root_dir = str(artifact_root_dir)
+        if checkpoint_root_dir is None:
+            checkpoint_root_dir = os.path.join(self.artifact_root_dir, "checkpoints", "eqm")
         self.checkpoint_root_dir = str(checkpoint_root_dir)
         self.important_feature_index = important_feature_index
         self.lambda_degree_importance = lambda_degree_importance
@@ -940,9 +946,9 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.default_exist_pos_weight = default_exist_pos_weight
         self.lambda_locality_importance = lambda_locality_importance
         self.lambda_auxiliary_locality_importance = lambda_auxiliary_locality_importance
-        self.use_guidance = bool(use_guidance)
         self.pool_condition_tokens = bool(pool_condition_tokens)
-        self.use_locality_supervision = bool(use_locality_supervision)
+        self.use_guidance = False
+        self.use_locality_supervision = False
         self.eqm_sigma = float(eqm_sigma)
         self.sampling_step_size = float(sampling_step_size)
         self.sampling_steps = int(sampling_steps if sampling_steps is not None else total_steps)
@@ -972,9 +978,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.best_checkpoint_path_ = None
         self.best_checkpoint_score_ = None
-
-        if self.use_guidance:
-            raise ValueError("EqMDecompositionalNodeGenerator does not implement classifier guidance.")
+        self.best_checkpoint_epoch_ = None
 
     def _plan_channel(self, channel_name: str):
         """Return the named channel from the orchestration supervision plan when available."""
@@ -1000,7 +1004,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         auxiliary_edge_targets: Optional[np.ndarray],
     ) -> Tuple[bool, bool, bool]:
         """Combine the supervision plan with the actually supplied arrays."""
-        planned_direct_edges = self._planned_enabled("direct_edges", self.use_locality_supervision)
+        planned_direct_edges = self._planned_enabled("direct_edges", False)
         planned_aux_locality = self._planned_enabled("auxiliary_locality", False)
         planned_edge_labels = self._planned_enabled(
             "edge_labels",
@@ -1134,7 +1138,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         auxiliary_edge_targets = node_batch.auxiliary_edge_targets
         node_label_targets = node_batch.node_label_targets
         edge_label_plan = self._plan_channel("edge_labels")
-        planned_direct_edges = self._planned_enabled("direct_edges", self.use_locality_supervision)
+        planned_direct_edges = self._planned_enabled("direct_edges", False)
         planned_aux_locality = self._planned_enabled("auxiliary_locality", False)
         planned_learned_edge_labels = (
             getattr(edge_label_plan, "mode", None) == "learned"
@@ -1321,6 +1325,16 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.model.constant_existence_value = self.constant_existence_value
         self.edge_pos_weight_ = float(edge_pos_weight)
         self.auxiliary_edge_pos_weight_ = float(auxiliary_edge_pos_weight)
+        if int(self.verbose) >= 1:
+            parameter_count = sum(param.numel() for param in self.model.parameters())
+            trainable_parameter_count = sum(
+                param.numel() for param in self.model.parameters() if param.requires_grad
+            )
+            print(
+                "ANN size: "
+                f"parameters={parameter_count:,}, "
+                f"trainable={trainable_parameter_count:,}."
+            )
 
     def fit(
         self,
@@ -1430,6 +1444,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         )
         callbacks.append(checkpoint_callback)
         if int(self.verbose) >= 1:
+            print(f"Writing Lightning logs to {os.path.join(self.artifact_root_dir, 'lightning_logs')}")
             print(f"Writing checkpoints to {checkpoint_dir}")
         if self.enable_early_stopping:
             callbacks.append(
@@ -1445,6 +1460,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             max_epochs=self.maximum_epochs,
             callbacks=callbacks,
             logger=True,
+            default_root_dir=self.artifact_root_dir,
             enable_checkpointing=True,
             enable_progress_bar=False,
         )
@@ -1470,16 +1486,27 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.best_checkpoint_score_ = float(best_score.item()) if best_score is not None else None
         if self.restore_best_checkpoint and self.best_checkpoint_path_:
             checkpoint = torch.load(self.best_checkpoint_path_, map_location=self.device)
+            best_epoch = checkpoint.get("epoch")
+            self.best_checkpoint_epoch_ = int(best_epoch) if best_epoch is not None else None
             state_dict = checkpoint.get("state_dict", checkpoint)
             self.model.load_state_dict(state_dict)
             self.model.to(self.device)
             if int(self.verbose) >= 1:
+                stopped_epoch = int(getattr(trainer, "current_epoch", -1)) + 1
+                epoch_msg = (
+                    f"best_epoch={self.best_checkpoint_epoch_ + 1}, "
+                    if self.best_checkpoint_epoch_ is not None
+                    else ""
+                )
                 score_msg = (
                     f"{self.early_stopping_monitor}={self.best_checkpoint_score_:.4f}"
                     if self.best_checkpoint_score_ is not None
                     else f"{self.early_stopping_monitor}=unknown"
                 )
-                print(f"Restored best checkpoint from {self.best_checkpoint_path_} ({score_msg}).")
+                print(
+                    f"Restored best checkpoint from {self.best_checkpoint_path_} "
+                    f"({epoch_msg}{score_msg}, stopped_epoch={stopped_epoch})."
+                )
 
     def predict(
         self,

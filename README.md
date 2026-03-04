@@ -35,7 +35,6 @@ from eqm_decompositional_graph_generator.eqm_conditional_node_generator import (
     EqMDecompositionalNodeGenerator,
 )
 from eqm_decompositional_graph_generator.graph_generator import (
-    EqMDecompositionalConditionedNodeGenerator,
     EqMDecompositionalGraphDecoder,
     EqMDecompositionalGraphGenerator,
 )

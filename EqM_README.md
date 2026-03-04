@@ -689,6 +689,13 @@ Smaller values:
 - make training more local,
 - can lead to sharper but less robust score estimates.
 
+Practical effect:
+
+- increase `eqm_sigma` if training is unstable or the learned score field looks too noisy,
+- decrease `eqm_sigma` if training is stable but generations look overly smooth or generic.
+
+Conceptually, `eqm_sigma` changes what score field the model learns, not how sampling uses that field.
+
 ### `noise_degree_factor`
 
 Reduces corruption on the degree feature channel.
@@ -709,6 +716,13 @@ Too large:
 - unstable trajectories,
 - divergence or oscillation.
 
+Practical effect:
+
+- reduce `sampling_step_size` if generations are chaotic, unstable, or overshoot,
+- increase it slightly if sampling is too slow or the latent state changes too little from step to step.
+
+Conceptually, `sampling_step_size` changes how aggressively the learned score field is followed at inference time.
+
 ### `sampling_steps`
 
 Number of EqM sampling iterations.
@@ -716,6 +730,31 @@ Number of EqM sampling iterations.
 ### `langevin_noise_scale`
 
 Amount of stochastic noise added during sampling.
+
+- `0.0` gives deterministic relaxation updates for a fixed random seed.
+- positive values inject extra exploration and sample diversity.
+
+If it is too small:
+
+- samples may collapse to a narrow mode family,
+- diversity may be limited.
+
+If it is too large:
+
+- sampling becomes noisy,
+- feasibility and structural fidelity may degrade.
+
+Practical effect:
+
+- keep it at `0.0` when you want stable, reproducible generation,
+- raise it slightly when samples are too similar and you want more diversity,
+- reduce it again if graph quality or feasibility starts to degrade.
+
+In short:
+
+- `eqm_sigma` changes what the model learns,
+- `sampling_step_size` changes how hard sampling follows that learned field,
+- `langevin_noise_scale` changes how much randomness is injected while following it.
 
 ### `lambda_degree_importance`
 
@@ -786,7 +825,7 @@ Without the existence and degree heads, the EqM field alone may produce softer o
 
 ### 4. Guidance is not implemented in phase 1
 
-The class currently rejects `use_guidance=True`.
+Classifier guidance is not part of the maintained EqM decompositional API.
 
 ## Source Notes
 

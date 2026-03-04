@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """Graph encoder/decoder helpers used by the maintained conditional graph-generation pipeline."""
 
-import copy
 from dataclasses import dataclass
 import numpy as np
 import networkx as nx
@@ -700,59 +699,6 @@ class EqMDecompositionalGraphDecoder(object):
         return self
 
 # =============================================================================
-# EqMDecompositionalConditionedNodeGenerator Class
-# =============================================================================
-class EqMDecompositionalConditionedNodeGenerator(object):
-    """Thin wrapper that delegates training and inference to a conditional node generator."""
-    def __init__(
-            self, 
-            conditional_node_generator: Optional[ConditionalNodeGeneratorBase] = None,
-            verbose: bool = True
-            ) -> None:
-        """Clone the supplied generator and persist the verbosity preference."""
-        self.conditional_node_generator = copy.deepcopy(conditional_node_generator)
-        self.verbose = verbose
-
-    @timeit
-    def fit(
-        self,
-        node_batch: NodeGenerationBatch,
-        graph_conditioning: GraphConditioningBatch,
-    ) -> 'EqMDecompositionalConditionedNodeGenerator':
-        if self.verbose:
-            print(
-                f"Training conditional model on {len(node_batch)} graphs "
-                f"with up to {node_batch.node_presence_mask.shape[1]} nodes each."
-            )
-        if node_batch.edge_pairs is not None and node_batch.edge_targets is not None and self.verbose:
-            print(f"Using direct-edge supervision with {len(node_batch.edge_pairs)} labelled pairs.")
-
-        self.conditional_node_generator.setup(
-            node_batch=node_batch,
-            graph_conditioning=graph_conditioning,
-        )
-        self.conditional_node_generator.fit(
-            node_batch=node_batch,
-            graph_conditioning=graph_conditioning,
-        )
-
-        return self
-
-    @timeit
-    def predict(
-        self,
-        graph_conditioning: GraphConditioningBatch,
-        desired_class: Optional[Union[int, Sequence[int]]] = None,
-    ) -> GeneratedNodeBatch:
-        if int(self.verbose) >= 3:
-            print(f"Predicting node matrices for {len(graph_conditioning)} graphs...")
-        generated_nodes = self.conditional_node_generator.predict(
-            graph_conditioning,
-            desired_class=desired_class,
-        )
-        return generated_nodes
-    
-# =============================================================================
 # EqMDecompositionalGraphGenerator Class 
 # =============================================================================
 
@@ -762,25 +708,26 @@ class EqMDecompositionalGraphGenerator(object):
             self,
             graph_vectorizer: Any = None,
             node_graph_vectorizer: Any = None,
-            node_generator: Optional[EqMDecompositionalConditionedNodeGenerator] = None,
+            conditional_node_generator_model: Optional[ConditionalNodeGeneratorBase] = None,
             graph_decoder: Optional[EqMDecompositionalGraphDecoder] = None,
             verbose: bool = True,
-            use_locality_supervision: bool = False,
             locality_sample_fraction: float = 1.0,
             locality_horizon: int = 1,
             negative_sample_factor: int = 1,
             locality_sampling_strategy: str = "stratified_preserve",
             locality_target_positive_ratio: Optional[float] = None,
             feasibility_estimator: Any = None,
+            use_feasibility_filtering: bool = True,
             max_feasibility_attempts: int = 10,
+            feasibility_candidates_per_attempt: int = 4,
+            feasibility_failure_mode: str = "return_partial",
             ) -> None:
         """Store the collaborating components and configuration used for the pipeline."""
         self.graph_vectorizer = graph_vectorizer
         self.node_graph_vectorizer = node_graph_vectorizer
-        self.node_generator = node_generator
+        self.conditional_node_generator_model = conditional_node_generator_model
         self.graph_decoder = graph_decoder
         self.verbose = verbose
-        self.use_locality_supervision = use_locality_supervision
         self.node_label_classes_ = None
         self.node_label_to_index_ = None
         self.node_label_histogram_dimension = 0
@@ -795,7 +742,10 @@ class EqMDecompositionalGraphGenerator(object):
         self.locality_sampling_strategy = locality_sampling_strategy
         self.locality_target_positive_ratio = locality_target_positive_ratio
         self.feasibility_estimator = feasibility_estimator
+        self.use_feasibility_filtering = bool(use_feasibility_filtering)
         self.max_feasibility_attempts = int(max_feasibility_attempts)
+        self.feasibility_candidates_per_attempt = int(feasibility_candidates_per_attempt)
+        self.feasibility_failure_mode = str(feasibility_failure_mode)
         valid_sampling_strategies = {"uniform", "stratified_preserve", "stratified_target"}
         if self.locality_sampling_strategy not in valid_sampling_strategies:
             raise ValueError(
@@ -806,6 +756,18 @@ class EqMDecompositionalGraphGenerator(object):
             raise ValueError("locality_target_positive_ratio must be between 0 and 1 when provided.")
         if self.max_feasibility_attempts < 1:
             raise ValueError("max_feasibility_attempts must be >= 1")
+        if self.feasibility_candidates_per_attempt < 1:
+            raise ValueError("feasibility_candidates_per_attempt must be >= 1")
+        valid_feasibility_failure_modes = {"raise", "return_partial"}
+        if self.feasibility_failure_mode not in valid_feasibility_failure_modes:
+            raise ValueError(
+                f"feasibility_failure_mode must be one of {sorted(valid_feasibility_failure_modes)} "
+                f"(got {self.feasibility_failure_mode!r})."
+            )
+
+    def set_feasibility_filtering(self, enabled: bool) -> None:
+        """Enable or disable feasibility filtering during generation without discarding the fitted estimator."""
+        self.use_feasibility_filtering = bool(enabled)
 
     def _build_supervision_plan(
         self,
@@ -851,24 +813,17 @@ class EqMDecompositionalGraphGenerator(object):
                 edge_label_reason = f"{len(unique_edge_labels)} edge labels detected."
                 edge_label_constant = None
 
-        direct_edges_enabled = bool(self.use_locality_supervision)
-        if direct_edges_enabled:
-            direct_edges_mode = "learned"
-            direct_edges_reason = "Generator should learn horizon-1 edge presence for the decoder."
-        else:
-            direct_edges_mode = "disabled"
-            direct_edges_reason = "Direct edge supervision was not requested."
+        direct_edges_enabled = True
+        direct_edges_mode = "learned"
+        direct_edges_reason = "Generator should learn horizon-1 edge presence for the decoder."
 
-        aux_enabled = bool(self.use_locality_supervision and self.locality_horizon > 1)
+        aux_enabled = bool(self.locality_horizon > 1)
         if aux_enabled:
             auxiliary_mode = "learned"
             auxiliary_reason = f"Use horizon-{self.locality_horizon} locality as auxiliary regularization."
-        elif self.use_locality_supervision:
-            auxiliary_mode = "disabled"
-            auxiliary_reason = "No auxiliary locality is needed when locality_horizon=1."
         else:
             auxiliary_mode = "disabled"
-            auxiliary_reason = "Auxiliary locality depends on direct edge supervision being enabled."
+            auxiliary_reason = "No auxiliary locality is needed when locality_horizon=1."
 
         return SupervisionPlan(
             node_labels=SupervisionChannelPlan(
@@ -921,8 +876,8 @@ class EqMDecompositionalGraphGenerator(object):
     def toggle_verbose(self) -> None:
         """Flip verbosity for this instance and any nested generators."""
         self.verbose = not self.verbose
-        if self.node_generator is not None:
-            self.node_generator.verbose = self.verbose
+        if self.conditional_node_generator_model is not None:
+            self.conditional_node_generator_model.verbose = self.verbose
         if self.graph_decoder is not None:
             self.graph_decoder.verbose = self.verbose
 
@@ -951,8 +906,8 @@ class EqMDecompositionalGraphGenerator(object):
             edge_label_targets=edge_label_targets,
         )
         self.supervision_plan_ = supervision_plan
-        if self.node_generator is not None:
-            setattr(self.node_generator, "supervision_plan_", supervision_plan)
+        if self.conditional_node_generator_model is not None:
+            setattr(self.conditional_node_generator_model, "supervision_plan_", supervision_plan)
         if self.graph_decoder is not None:
             setattr(self.graph_decoder, "supervision_plan_", supervision_plan)
 
@@ -1005,7 +960,18 @@ class EqMDecompositionalGraphGenerator(object):
                 auxiliary_edge_pairs=auxiliary_edge_pairs_for_cond_gen,
                 auxiliary_edge_targets=auxiliary_edge_targets_for_cond_gen,
             )
-            self.node_generator.fit(
+            if self.verbose:
+                print(
+                    f"Training conditional model on {len(node_batch)} graphs "
+                    f"with up to {node_batch.node_presence_mask.shape[1]} nodes each."
+                )
+            if node_batch.edge_pairs is not None and node_batch.edge_targets is not None and self.verbose:
+                print(f"Using direct-edge supervision with {len(node_batch.edge_pairs)} labelled pairs.")
+            self.conditional_node_generator_model.setup(
+                node_batch=node_batch,
+                graph_conditioning=graph_conditioning,
+            )
+            self.conditional_node_generator_model.fit(
                 node_batch=node_batch,
                 graph_conditioning=graph_conditioning,
             )
@@ -1262,7 +1228,9 @@ class EqMDecompositionalGraphGenerator(object):
         desired_class: Optional[Union[int, Sequence[int]]] = None,
     ) -> List[nx.Graph]:
         """Run a single generator pass and decode graphs without feasibility retries."""
-        generated_nodes = self.node_generator.predict(
+        if int(self.verbose) >= 3:
+            print(f"Predicting node matrices for {len(graph_conditioning)} graphs...")
+        generated_nodes = self.conditional_node_generator_model.predict(
             graph_conditioning,
             desired_class=desired_class,
         )
@@ -1274,26 +1242,44 @@ class EqMDecompositionalGraphGenerator(object):
             predicted_edge_label_matrices=generated_nodes.edge_label_matrices,
         )
 
-    def _decode_with_feasibility(
+    def _decode_with_feasibility_slots(
         self,
         graph_conditioning: GraphConditioningBatch,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
-    ) -> List[nx.Graph]:
+        apply_feasibility_filtering: Optional[bool] = None,
+    ) -> List[Optional[nx.Graph]]:
         """Decode graphs and optionally reject infeasible outputs until the batch is filled."""
-        if self.feasibility_estimator is None:
-            return self._decode_conditioning_batch(
-                graph_conditioning,
-                desired_class=desired_class,
+        use_filtering = (
+            self.use_feasibility_filtering
+            if apply_feasibility_filtering is None
+            else bool(apply_feasibility_filtering)
+        )
+        if self.feasibility_estimator is None or not use_filtering:
+            return list(
+                self._decode_conditioning_batch(
+                    graph_conditioning,
+                    desired_class=desired_class,
+                )
             )
 
-        accepted_graphs: List[nx.Graph] = []
+        accepted_graphs_by_slot: List[Optional[nx.Graph]] = [None] * len(graph_conditioning)
         pending_conditioning = graph_conditioning
+        pending_slot_indices = list(range(len(graph_conditioning)))
         attempt = 0
         total_generated = 0
         while len(pending_conditioning) > 0 and attempt < self.max_feasibility_attempts:
             attempt += 1
-            decoded_graphs = self._decode_conditioning_batch(
+            candidate_conditioning = self._repeat_graph_conditioning(
                 pending_conditioning,
+                repeats=self.feasibility_candidates_per_attempt,
+            )
+            candidate_slot_indices = [
+                slot_idx
+                for slot_idx in pending_slot_indices
+                for _ in range(self.feasibility_candidates_per_attempt)
+            ]
+            decoded_graphs = self._decode_conditioning_batch(
+                candidate_conditioning,
                 desired_class=desired_class,
             )
             total_generated += len(decoded_graphs)
@@ -1306,46 +1292,81 @@ class EqMDecompositionalGraphGenerator(object):
                     "Feasibility estimator returned a mask of unexpected length "
                     f"({feasibility_mask.shape[0]} for {len(decoded_graphs)} graphs)."
                 )
-            accepted_graphs.extend(
-                graph for graph, is_feasible in zip(decoded_graphs, feasibility_mask.tolist()) if is_feasible
-            )
-            rejected_indices = [idx for idx, is_feasible in enumerate(feasibility_mask.tolist()) if not is_feasible]
+            accepted_this_round = set()
+            for local_idx, (graph, is_feasible) in enumerate(zip(decoded_graphs, feasibility_mask.tolist())):
+                slot_idx = candidate_slot_indices[local_idx]
+                if is_feasible and accepted_graphs_by_slot[slot_idx] is None:
+                    accepted_graphs_by_slot[slot_idx] = graph
+                    accepted_this_round.add(slot_idx)
+            rejected_slot_indices = [
+                slot_idx for slot_idx in pending_slot_indices if accepted_graphs_by_slot[slot_idx] is None
+            ]
             if int(self.verbose) >= 1:
-                accepted_now = int(feasibility_mask.sum())
-                rejected_now = int((~feasibility_mask).sum())
+                accepted_now = len(accepted_this_round)
+                rejected_now = len(rejected_slot_indices)
+                accepted_total = sum(graph is not None for graph in accepted_graphs_by_slot)
+                missing_total = len(graph_conditioning) - accepted_total
                 attempted_total = len(decoded_graphs)
                 acceptance_rate = (accepted_now / attempted_total) if attempted_total > 0 else 0.0
                 print(
-                    f"Feasibility filtering attempt {attempt}/{self.max_feasibility_attempts}: "
-                    f"generated={attempted_total}, accepted={accepted_now}, "
-                    f"rejected={rejected_now}, acceptance_rate={acceptance_rate:.1%}."
+                    f"Feasibility attempt {attempt:>2}/{self.max_feasibility_attempts:<2} | "
+                    f"generated={attempted_total:>4} | "
+                    f"accepted={accepted_now:>2} | "
+                    f"rejected={rejected_now:>2} | "
+                    f"rate={acceptance_rate:>6.1%} | "
+                    f"accepted_total={accepted_total:>2} | "
+                    f"missing_total={missing_total:>2}"
                 )
-            if not rejected_indices:
+            if not rejected_slot_indices:
                 break
+            pending_slot_indices = rejected_slot_indices
             pending_conditioning = self._slice_graph_conditioning(
-                pending_conditioning,
-                rejected_indices,
+                graph_conditioning,
+                pending_slot_indices,
             )
 
-        if len(accepted_graphs) != len(graph_conditioning):
-            raise RuntimeError(
-                "Feasibility filtering did not recover enough graphs: "
-                f"accepted {len(accepted_graphs)} of {len(graph_conditioning)} after "
-                f"{self.max_feasibility_attempts} attempts."
-            )
+        accepted_count = sum(graph is not None for graph in accepted_graphs_by_slot)
         if int(self.verbose) >= 1:
-            overall_rate = (len(accepted_graphs) / total_generated) if total_generated > 0 else 0.0
+            overall_rate = (accepted_count / total_generated) if total_generated > 0 else 0.0
             print(
                 "Feasibility filtering summary: "
-                f"generated={total_generated}, accepted={len(accepted_graphs)}, "
+                f"generated={total_generated}, accepted={accepted_count}, "
                 f"acceptance_rate={overall_rate:.1%}."
             )
-        return accepted_graphs
+        return accepted_graphs_by_slot
+
+    def _decode_with_feasibility(
+        self,
+        graph_conditioning: GraphConditioningBatch,
+        desired_class: Optional[Union[int, Sequence[int]]] = None,
+        apply_feasibility_filtering: Optional[bool] = None,
+    ) -> List[nx.Graph]:
+        """Decode graphs and optionally reject infeasible outputs until the batch is filled."""
+        accepted_graphs_by_slot = self._decode_with_feasibility_slots(
+            graph_conditioning,
+            desired_class=desired_class,
+            apply_feasibility_filtering=apply_feasibility_filtering,
+        )
+        accepted_count = sum(graph is not None for graph in accepted_graphs_by_slot)
+        if accepted_count != len(graph_conditioning):
+            if self.feasibility_failure_mode == "raise":
+                raise RuntimeError(
+                    "Feasibility filtering did not recover enough graphs: "
+                    f"accepted {accepted_count} of {len(graph_conditioning)} after "
+                    f"{self.max_feasibility_attempts} attempts."
+                )
+            if int(self.verbose) >= 1:
+                print(
+                    "Feasibility filtering exhausted retries; returning only feasible graphs: "
+                    f"accepted {accepted_count} of {len(graph_conditioning)}."
+                )
+        return [graph for graph in accepted_graphs_by_slot if graph is not None]
 
     def decode(
         self,
         graph_conditioning: GraphConditioningBatch,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
+        apply_feasibility_filtering: Optional[bool] = None,
     ) -> List[nx.Graph]:
         """Decode conditioning vectors into reconstructed graphs."""
         if self.verbose:
@@ -1356,10 +1377,16 @@ class EqMDecompositionalGraphGenerator(object):
         return self._decode_with_feasibility(
             graph_conditioning,
             desired_class=desired_class,
+            apply_feasibility_filtering=apply_feasibility_filtering,
         )
 
     @timeit
-    def sample(self, n_samples: int = 1, desired_class: Optional[Union[int, Sequence[int]]] = None) -> List[nx.Graph]:
+    def sample(
+        self,
+        n_samples: int = 1,
+        desired_class: Optional[Union[int, Sequence[int]]] = None,
+        apply_feasibility_filtering: Optional[bool] = None,
+    ) -> List[nx.Graph]:
         """Generate random graphs by sampling conditioning vectors from the prior."""
         if self.verbose:
             print(f"Sampling {n_samples} graphs")
@@ -1370,6 +1397,7 @@ class EqMDecompositionalGraphGenerator(object):
         return self._decode_with_feasibility(
             sampled_conditioning,
             desired_class=desired_class,
+            apply_feasibility_filtering=apply_feasibility_filtering,
         )
 
     @timeit
@@ -1377,7 +1405,8 @@ class EqMDecompositionalGraphGenerator(object):
         self,
         graphs: List[nx.Graph],
         n_samples: int = 1,
-        desired_class: Optional[Union[int, Sequence[int]]] = None
+        desired_class: Optional[Union[int, Sequence[int]]] = None,
+        apply_feasibility_filtering: Optional[bool] = None,
     ) -> List[List[nx.Graph]]:
         """Sample multiple graphs per input by conditioning on each graph's encoding."""
         _, graph_conditioning = self.encode(graphs)
@@ -1385,19 +1414,33 @@ class EqMDecompositionalGraphGenerator(object):
             graph_conditioning,
             repeats=n_samples,
         )
-        decoded = self._decode_with_feasibility(
+        decoded_slots = self._decode_with_feasibility_slots(
             repeated_conditioning,
             desired_class=desired_class,
+            apply_feasibility_filtering=apply_feasibility_filtering,
         )
         return [
-            decoded[i * n_samples:(i + 1) * n_samples]
+            [
+                graph
+                for graph in decoded_slots[i * n_samples:(i + 1) * n_samples]
+                if graph is not None
+            ]
             for i in range(len(graphs))
         ]
 
-    def sample_conditioned_on_random(self, graphs, n_samples=1):
+    def sample_conditioned_on_random(
+        self,
+        graphs,
+        n_samples=1,
+        apply_feasibility_filtering: Optional[bool] = None,
+    ):
         sampled_seed_graphs = random.choices(graphs, k=n_samples)
-        reconstructed_graphs_list = self.conditional_sample(sampled_seed_graphs, n_samples=1)
-        sampled_graphs = [reconstructed_graphs[0] for reconstructed_graphs in reconstructed_graphs_list]
+        reconstructed_graphs_list = self.conditional_sample(
+            sampled_seed_graphs,
+            n_samples=1,
+            apply_feasibility_filtering=apply_feasibility_filtering,
+        )
+        sampled_graphs = [reconstructed_graphs[0] for reconstructed_graphs in reconstructed_graphs_list if reconstructed_graphs]
         return sampled_graphs
 
     def interpolate(
@@ -1469,7 +1512,7 @@ class EqMDecompositionalGraphGenerator(object):
         num_classes = int(np.max(targets_np)) + 1
 
         # --- Step 3: Access underlying model ---
-        model = self.node_generator.conditional_node_generator.model
+        model = self.conditional_node_generator_model.model
 
         # --- Step 4: Ensure guidance classifier is initialized correctly ---
         if not hasattr(model, "guidance_classifier") or model.guidance_classifier is None:
