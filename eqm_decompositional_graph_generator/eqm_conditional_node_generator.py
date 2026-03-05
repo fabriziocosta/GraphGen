@@ -236,6 +236,11 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         sampling_steps: int = 100,
         langevin_noise_scale: float = 0.0,
         pool_condition_tokens: bool = False,
+        guidance_enabled: bool = False,
+        target_condition_start_index: int = 0,
+        target_condition_feature_count: int = 0,
+        cfg_condition_dropout_prob: float = 0.1,
+        cfg_null_target_strategy: str = "zero",
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["verbose"])
@@ -248,6 +253,14 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
             raise ValueError(f"sampling_step_size must be positive (got {sampling_step_size}).")
         if sampling_steps <= 0:
             raise ValueError(f"sampling_steps must be positive (got {sampling_steps}).")
+        if not 0.0 <= cfg_condition_dropout_prob <= 1.0:
+            raise ValueError(
+                f"cfg_condition_dropout_prob must be in [0, 1] (got {cfg_condition_dropout_prob})."
+            )
+        if cfg_null_target_strategy not in {"zero"}:
+            raise ValueError(
+                f"cfg_null_target_strategy must be one of ['zero'] (got {cfg_null_target_strategy!r})."
+            )
 
         self.number_of_rows_per_example = number_of_rows_per_example
         self.input_feature_dimension = input_feature_dimension
@@ -292,6 +305,11 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         self.sampling_steps = int(sampling_steps)
         self.langevin_noise_scale = float(langevin_noise_scale)
         self.pool_condition_tokens = bool(pool_condition_tokens)
+        self.guidance_enabled = bool(guidance_enabled)
+        self.target_condition_start_index = int(target_condition_start_index)
+        self.target_condition_feature_count = int(target_condition_feature_count)
+        self.cfg_condition_dropout_prob = float(cfg_condition_dropout_prob)
+        self.cfg_null_target_strategy = str(cfg_null_target_strategy)
         self.use_guidance = False
         self.noise_degree_factor = 1.0
         self.use_existence_head = True
@@ -459,6 +477,34 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
     def _build_noise_scale(self, x: torch.Tensor) -> torch.Tensor:
         return torch.full_like(x, self.eqm_sigma)
 
+    def _has_target_conditioning(self) -> bool:
+        return self.guidance_enabled and self.target_condition_feature_count > 0
+
+    def _target_condition_slice(self) -> slice:
+        start = self.target_condition_start_index
+        end = start + self.target_condition_feature_count
+        return slice(start, end)
+
+    def _null_target_conditioning(self, global_condition: torch.Tensor) -> torch.Tensor:
+        if not self._has_target_conditioning():
+            return global_condition
+        cond = global_condition.clone()
+        cond[:, self._target_condition_slice()] = 0.0
+        return cond
+
+    def _apply_cfg_dropout(self, global_condition: torch.Tensor) -> torch.Tensor:
+        if not self._has_target_conditioning():
+            return global_condition
+        if self.cfg_condition_dropout_prob <= 0.0:
+            return global_condition
+        batch_size = global_condition.shape[0]
+        drop_mask = (torch.rand(batch_size, device=global_condition.device) < self.cfg_condition_dropout_prob)
+        if not torch.any(drop_mask):
+            return global_condition
+        cond = global_condition.clone()
+        cond[drop_mask, self._target_condition_slice()] = 0.0
+        return cond
+
     def _compute_score_field(
         self,
         noisy_input: torch.Tensor,
@@ -604,9 +650,10 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
             aux_edge_labels = torch.empty((0,), dtype=torch.float32, device=input_examples.device)
 
         batch_size = int(node_presence_mask.shape[0])
+        conditioned_global = self._apply_cfg_dropout(global_condition)
         losses, latent_tokens = self._eqm_loss(
             input_examples,
-            global_condition,
+            conditioned_global,
             node_presence_mask=node_presence_mask,
             node_degree_targets=node_degree_targets,
             node_label_targets=node_label_targets,
@@ -800,16 +847,27 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         self,
         global_condition: torch.Tensor,
         total_steps: Optional[int] = None,
+        desired_target: Optional[Union[int, float, Sequence[Any]]] = None,
+        guidance_scale: float = 1.0,
+        global_condition_unconditional: Optional[torch.Tensor] = None,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
         use_heads_projection: bool = False,
         exist_threshold: float = 0.5,
     ) -> torch.Tensor:
-        del desired_class
+        del desired_target, desired_class
+        if guidance_scale < 0:
+            raise ValueError(f"guidance_scale must be >= 0 (got {guidance_scale}).")
         self.eval()
         steps = int(total_steps if total_steps is not None else self.sampling_steps)
         eta = self.sampling_step_size
         batch_size = global_condition.size(0)
         device = global_condition.device
+        use_cfg = global_condition_unconditional is not None
+        if use_cfg and global_condition_unconditional.shape != global_condition.shape:
+            raise ValueError(
+                "global_condition_unconditional must have the same shape as global_condition "
+                f"(got {tuple(global_condition_unconditional.shape)} vs {tuple(global_condition.shape)})."
+            )
         self._last_edge_probability_matrices = None
         self._last_edge_label_matrices = None
         self._last_node_presence_mask = None
@@ -827,12 +885,22 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         for _ in range(steps):
             x = x.detach().requires_grad_(True)
             with torch.enable_grad():
-                score, _, latent_tokens = self._compute_score_field(
+                score_cond, _, latent_tokens = self._compute_score_field(
                     x,
                     global_condition,
                     node_mask=node_mask,
                     create_graph=False,
                 )
+                if use_cfg:
+                    score_uncond, _, _ = self._compute_score_field(
+                        x,
+                        global_condition_unconditional,
+                        node_mask=node_mask,
+                        create_graph=False,
+                    )
+                    score = score_uncond + guidance_scale * (score_cond - score_uncond)
+                else:
+                    score = score_cond
             x = (x + eta * score).detach()
             if self.langevin_noise_scale > 0:
                 x = x + np.sqrt(2.0 * eta) * self.langevin_noise_scale * torch.randn_like(x)
@@ -914,6 +982,9 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         sampling_steps: Optional[int] = None,
         langevin_noise_scale: float = 0.0,
         require_embedded_node_label_histogram: bool = False,
+        cfg_condition_dropout_prob: float = 0.1,
+        cfg_null_target_strategy: str = "zero",
+        target_classification_max_distinct: int = 20,
     ):
         self.latent_embedding_dimension = latent_embedding_dimension
         self.number_of_transformer_layers = number_of_transformer_layers
@@ -955,6 +1026,22 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.sampling_step_size = float(sampling_step_size)
         self.sampling_steps = int(sampling_steps if sampling_steps is not None else total_steps)
         self.langevin_noise_scale = float(langevin_noise_scale)
+        self.cfg_condition_dropout_prob = float(cfg_condition_dropout_prob)
+        self.cfg_null_target_strategy = str(cfg_null_target_strategy)
+        self.target_classification_max_distinct = int(target_classification_max_distinct)
+        if not 0.0 <= self.cfg_condition_dropout_prob <= 1.0:
+            raise ValueError(
+                f"cfg_condition_dropout_prob must be in [0, 1] (got {self.cfg_condition_dropout_prob})."
+            )
+        if self.cfg_null_target_strategy not in {"zero"}:
+            raise ValueError(
+                f"cfg_null_target_strategy must be one of ['zero'] (got {self.cfg_null_target_strategy!r})."
+            )
+        if self.target_classification_max_distinct < 1:
+            raise ValueError(
+                "target_classification_max_distinct must be >= 1 "
+                f"(got {self.target_classification_max_distinct})."
+            )
         self.require_embedded_node_label_histogram = False
         self.use_existence_head = True
         self.constant_existence_value = 1.0
@@ -968,6 +1055,13 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.last_predicted_node_label_classes_ = None
         self.last_predicted_edge_probability_matrices_ = None
         self.last_predicted_edge_label_matrices_ = None
+        self.target_mode_ = None
+        self.target_classes_ = None
+        self.target_to_index_ = None
+        self.target_scaler_ = None
+        self.target_condition_dim_ = 0
+        self.target_condition_start_ = None
+        self.guidance_enabled_ = False
 
         self.number_of_rows_per_example = None
         self.input_feature_dimension = None

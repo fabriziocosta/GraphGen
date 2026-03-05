@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Any, Optional, Tuple
+from typing import List, Any, Optional, Tuple, Sequence, Union
 import numpy as np
 
 @dataclass
@@ -72,8 +72,15 @@ class ConditionalNodeGeneratorBase:
         self,
         node_batch: NodeGenerationBatch,
         graph_conditioning: GraphConditioningBatch,
+        targets: Optional[Sequence[Any]] = None,
     ):
         raise NotImplementedError("fit() must be implemented by subclasses.")
 
-    def predict(self, graph_conditioning: GraphConditioningBatch):
+    def predict(
+        self,
+        graph_conditioning: GraphConditioningBatch,
+        desired_target: Optional[Union[int, float, Sequence[Any]]] = None,
+        guidance_scale: float = 1.0,
+        desired_class: Optional[Union[int, Sequence[int]]] = None,
+    ):
         raise NotImplementedError("predict() must be implemented by subclasses.")

@@ -886,9 +886,15 @@ class EqMDecompositionalGraphGenerator(object):
         self,
         graphs: List[nx.Graph],
         train_node_generator: bool = True,
+        targets: Optional[Sequence[Any]] = None,
     ) -> 'EqMDecompositionalGraphGenerator':
         if self.verbose:
             print(f"Fitting model on {len(graphs)} graphs")
+        if targets is not None and len(targets) != len(graphs):
+            raise ValueError(
+                "targets length must match the number of graphs "
+                f"(got {len(targets)} targets for {len(graphs)} graphs)."
+            )
 
         # Fit vectorizers
         self.graph_vectorizer.fit(graphs)
@@ -970,10 +976,12 @@ class EqMDecompositionalGraphGenerator(object):
             self.conditional_node_generator_model.setup(
                 node_batch=node_batch,
                 graph_conditioning=graph_conditioning,
+                targets=targets,
             )
             self.conditional_node_generator_model.fit(
                 node_batch=node_batch,
                 graph_conditioning=graph_conditioning,
+                targets=targets,
             )
 
         return self
@@ -1225,6 +1233,8 @@ class EqMDecompositionalGraphGenerator(object):
     def _decode_conditioning_batch(
         self,
         graph_conditioning: GraphConditioningBatch,
+        desired_target: Optional[Union[int, float, Sequence[Any]]] = None,
+        guidance_scale: float = 1.0,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
     ) -> List[nx.Graph]:
         """Run a single generator pass and decode graphs without feasibility retries."""
@@ -1232,6 +1242,8 @@ class EqMDecompositionalGraphGenerator(object):
             print(f"Predicting node matrices for {len(graph_conditioning)} graphs...")
         generated_nodes = self.conditional_node_generator_model.predict(
             graph_conditioning,
+            desired_target=desired_target,
+            guidance_scale=guidance_scale,
             desired_class=desired_class,
         )
         self._log_generated_batch_info(graph_conditioning, generated_nodes)
@@ -1245,6 +1257,8 @@ class EqMDecompositionalGraphGenerator(object):
     def _decode_with_feasibility_slots(
         self,
         graph_conditioning: GraphConditioningBatch,
+        desired_target: Optional[Union[int, float, Sequence[Any]]] = None,
+        guidance_scale: float = 1.0,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
         apply_feasibility_filtering: Optional[bool] = None,
     ) -> List[Optional[nx.Graph]]:
@@ -1258,6 +1272,8 @@ class EqMDecompositionalGraphGenerator(object):
             return list(
                 self._decode_conditioning_batch(
                     graph_conditioning,
+                    desired_target=desired_target,
+                    guidance_scale=guidance_scale,
                     desired_class=desired_class,
                 )
             )
@@ -1280,6 +1296,8 @@ class EqMDecompositionalGraphGenerator(object):
             ]
             decoded_graphs = self._decode_conditioning_batch(
                 candidate_conditioning,
+                desired_target=desired_target,
+                guidance_scale=guidance_scale,
                 desired_class=desired_class,
             )
             total_generated += len(decoded_graphs)
@@ -1338,12 +1356,16 @@ class EqMDecompositionalGraphGenerator(object):
     def _decode_with_feasibility(
         self,
         graph_conditioning: GraphConditioningBatch,
+        desired_target: Optional[Union[int, float, Sequence[Any]]] = None,
+        guidance_scale: float = 1.0,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
         apply_feasibility_filtering: Optional[bool] = None,
     ) -> List[nx.Graph]:
         """Decode graphs and optionally reject infeasible outputs until the batch is filled."""
         accepted_graphs_by_slot = self._decode_with_feasibility_slots(
             graph_conditioning,
+            desired_target=desired_target,
+            guidance_scale=guidance_scale,
             desired_class=desired_class,
             apply_feasibility_filtering=apply_feasibility_filtering,
         )
@@ -1365,17 +1387,23 @@ class EqMDecompositionalGraphGenerator(object):
     def decode(
         self,
         graph_conditioning: GraphConditioningBatch,
+        desired_target: Optional[Union[int, float, Sequence[Any]]] = None,
+        guidance_scale: float = 1.0,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
         apply_feasibility_filtering: Optional[bool] = None,
     ) -> List[nx.Graph]:
         """Decode conditioning vectors into reconstructed graphs."""
         if self.verbose:
             print(f"Decoding {len(graph_conditioning)} conditioning vectors")
+            if desired_target is not None:
+                print(f"Using CFG target guidance: {desired_target} (scale={guidance_scale})")
             if desired_class is not None:
                 print(f"Using classifier guidance toward class(es): {desired_class}")
         
         return self._decode_with_feasibility(
             graph_conditioning,
+            desired_target=desired_target,
+            guidance_scale=guidance_scale,
             desired_class=desired_class,
             apply_feasibility_filtering=apply_feasibility_filtering,
         )
@@ -1384,18 +1412,24 @@ class EqMDecompositionalGraphGenerator(object):
     def sample(
         self,
         n_samples: int = 1,
+        desired_target: Optional[Union[int, float, Sequence[Any]]] = None,
+        guidance_scale: float = 1.0,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
         apply_feasibility_filtering: Optional[bool] = None,
     ) -> List[nx.Graph]:
         """Generate random graphs by sampling conditioning vectors from the prior."""
         if self.verbose:
             print(f"Sampling {n_samples} graphs")
+            if desired_target is not None:
+                print(f"Using CFG target guidance: {desired_target} (scale={guidance_scale})")
             if desired_class is not None:
                 print(f"Using classifier guidance toward class(es): {desired_class}")
         
         sampled_conditioning = self._sample_conditions(n_samples)
         return self._decode_with_feasibility(
             sampled_conditioning,
+            desired_target=desired_target,
+            guidance_scale=guidance_scale,
             desired_class=desired_class,
             apply_feasibility_filtering=apply_feasibility_filtering,
         )
@@ -1405,6 +1439,8 @@ class EqMDecompositionalGraphGenerator(object):
         self,
         graphs: List[nx.Graph],
         n_samples: int = 1,
+        desired_target: Optional[Union[int, float, Sequence[Any]]] = None,
+        guidance_scale: float = 1.0,
         desired_class: Optional[Union[int, Sequence[int]]] = None,
         apply_feasibility_filtering: Optional[bool] = None,
     ) -> List[List[nx.Graph]]:
@@ -1416,6 +1452,8 @@ class EqMDecompositionalGraphGenerator(object):
         )
         decoded_slots = self._decode_with_feasibility_slots(
             repeated_conditioning,
+            desired_target=desired_target,
+            guidance_scale=guidance_scale,
             desired_class=desired_class,
             apply_feasibility_filtering=apply_feasibility_filtering,
         )
@@ -1432,12 +1470,16 @@ class EqMDecompositionalGraphGenerator(object):
         self,
         graphs,
         n_samples=1,
+        desired_target: Optional[Union[int, float, Sequence[Any]]] = None,
+        guidance_scale: float = 1.0,
         apply_feasibility_filtering: Optional[bool] = None,
     ):
         sampled_seed_graphs = random.choices(graphs, k=n_samples)
         reconstructed_graphs_list = self.conditional_sample(
             sampled_seed_graphs,
             n_samples=1,
+            desired_target=desired_target,
+            guidance_scale=guidance_scale,
             apply_feasibility_filtering=apply_feasibility_filtering,
         )
         sampled_graphs = [reconstructed_graphs[0] for reconstructed_graphs in reconstructed_graphs_list if reconstructed_graphs]
