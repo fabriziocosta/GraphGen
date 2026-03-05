@@ -294,36 +294,13 @@ where the division is elementwise.
 
 The implementation minimizes masked mean squared error between learned score and target score:
 
-$$
-\mathcal{L}_{\text{eqm}}
-=
-\mathbb{E}_{x,\varepsilon}
-\left[
-\left\|
-g_\theta(\tilde{x}, c) + \frac{\varepsilon}{s}
-\right\|^2
-\right]
-$$
+$$\mathcal{L}_{\text{eqm}} = \mathbb{E}_{x,\varepsilon}\left[\left\|g_\theta(\tilde{x}, c) + \frac{\varepsilon}{s}\right\|^2\right]$$
 
 with masking applied to padded node positions.
 
 Expanded with mask $m$:
 
-$$
-\mathcal{L}_{\text{eqm}}
-=
-\frac{
-\sum_{b,i,d}
-m_{b,i}
-\left(
-g_\theta(\tilde{x}, c)_{b,i,d}
-+
-\frac{\varepsilon_{b,i,d}}{s_{b,i,d}}
-\right)^2
-}{
-\sum_{b,i,d} m_{b,i}
-}
-$$
+$$\mathcal{L}_{\text{eqm}} = \frac{\sum_{b,i,d} m_{b,i}\left(g_\theta(\tilde{x}, c)_{b,i,d} + \frac{\varepsilon_{b,i,d}}{s_{b,i,d}}\right)^2}{\sum_{b,i,d} m_{b,i}}$$
 
 This is the primary generative loss in the current code.
 
