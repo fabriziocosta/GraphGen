@@ -127,6 +127,23 @@ def _safe_random_tree(n: int) -> nx.Graph:
         g.add_edge(u, v)
         return g
 
+
+def _ensure_connected_graph(g: nx.Graph) -> nx.Graph:
+    """Connect graph components by adding bridge edges between them."""
+    if g.number_of_nodes() <= 1:
+        return g
+    if nx.is_connected(g):
+        return g
+    components = [list(component) for component in nx.connected_components(g)]
+    for idx in range(len(components) - 1):
+        left = components[idx]
+        right = components[idx + 1]
+        u = random.choice(left)
+        v = random.choice(right)
+        g.add_edge(u, v)
+    return g
+
+
 class RandomGraphConstructor(object):
     def __init__(self, integers_range=18, instance_size=4, alphabet_size=3):
         self.integers_range = integers_range
@@ -234,16 +251,20 @@ def make_graph_generator(graph_type, instance_size):
         dmax = 4
         max_attempts = 128
         graph_generator = None
+        last_candidate = None
         for _ in range(max_attempts):
             candidate = random_degree_seq(n, dmax)
-            if nx.is_connected(candidate):
+            last_candidate = candidate
+            is_connected = False
+            try:
+                is_connected = nx.is_connected(candidate)
+            except nx.NetworkXPointlessConcept:
+                is_connected = False
+            if is_connected:
                 graph_generator = candidate
                 break
         if graph_generator is None:
-            raise RuntimeError(
-                "Unable to sample a connected degree-sequence graph "
-                f"after {max_attempts} attempts (n={n}, dmax={dmax})."
-            )
+            graph_generator = _ensure_connected_graph(last_candidate if last_candidate is not None else nx.Graph())
 
     if graph_type == 'regular':
         if instance_size == 1:
