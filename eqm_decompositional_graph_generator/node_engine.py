@@ -89,7 +89,6 @@ class ConditionalNodeGeneratorBase:
 
 
 import contextlib
-import math
 import os
 import sys
 import time
@@ -114,26 +113,6 @@ def suppress_output():
         finally:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
-
-
-def get_sinusoidal_time_embedding(t: torch.Tensor, dim: int) -> torch.Tensor:
-    """Encode scalar time values into sinusoidal embeddings.
-
-    Args:
-        t (torch.Tensor): Parameter.
-        dim (int): Parameter.
-
-    Returns:
-        torch.Tensor: Return value.
-    """
-    half_dim = dim // 2
-    inv_freq = torch.exp(
-        torch.arange(0, half_dim, device=t.device).float() * (-math.log(10000) / (half_dim - 1))
-    )
-    angles = t * inv_freq.view(1, -1)
-    return torch.cat([angles.sin(), angles.cos()], dim=-1)
-
-
 class CrossTransformerEncoderLayer(nn.Module):
     """Pre-norm transformer block with self-attention followed by cross-attention."""
 
