@@ -7,3 +7,4 @@
 - Use utility-style modules for reusable notebook logic, including specialized helpers in `notebooks/` when useful.
 - Keep notebook execution cells focused on variable assignments and function calls.
 - Add concise comments in notebook cells to clarify variable meaning and role in the workflow.
+- Public-facing functions should use Google-style docstrings, including `Args` (parameter descriptions) and `Returns`.
