@@ -40,6 +40,8 @@ lightning_logs/
 *.nbconvert.ipynb
 *.nbconvert.html
 *.ckpt
+.artifacts/
+**/.artifacts/
 
 # ---- IDE / OS clutter ----
 .DS_Store
