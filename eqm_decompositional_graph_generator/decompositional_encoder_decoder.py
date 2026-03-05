@@ -1488,36 +1488,72 @@ class EqMDecompositionalGraphGenerator(object):
         self,
         G1: nx.Graph,
         G2: nx.Graph,
-        n_steps: int = 10,
-        t_start: float = 0.0,
-        t_end: float = 1.0
-    ) -> List[nx.Graph]:
-        """Interpolate between two graphs by SLERP-ing their condition vectors."""
-        ts = np.linspace(t_start, t_end, n_steps)
-        results = []
-        cond1 = self.graph_encode([G1])
-        cond2 = self.graph_encode([G2])
-        emb1 = cond1.graph_embeddings[0]
-        emb2 = cond2.graph_embeddings[0]
-        node_count = int(round((cond1.node_counts[0] + cond2.node_counts[0]) / 2.0))
-        edge_count = int(round((cond1.edge_counts[0] + cond2.edge_counts[0]) / 2.0))
-        for t in ts:
-            emb_t = scaled_slerp(emb1, emb2, t)
-            hist_t = None
-            if cond1.node_label_histograms is not None and cond2.node_label_histograms is not None:
-                hist_t = np.asarray([(1 - t) * cond1.node_label_histograms[0] + t * cond2.node_label_histograms[0]])
-            results.append(
-                self.decode(
-                    GraphConditioningBatch(
-                        graph_embeddings=np.asarray([emb_t]),
-                        node_counts=np.asarray([node_count], dtype=np.int64),
-                        edge_counts=np.asarray([edge_count], dtype=np.int64),
-                        node_label_histograms=hist_t,
-                    )
-                )[0]
+        k: int = 7,
+        apply_feasibility_filtering: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """Interpolate between two graph condition vectors and decode intermediate graphs."""
+
+        def _interpolate_integer_series(start, end, ts, minimum):
+            values = np.rint([(1.0 - t) * start + t * end for t in ts]).astype(np.int64)
+            return np.maximum(values, np.int64(minimum))
+
+        cond_a = self.graph_encode([G1])
+        cond_b = self.graph_encode([G2])
+        ts = np.linspace(0.0, 1.0, k + 2)[1:-1]
+
+        interpolated_graph_embeddings = np.stack(
+            [(1.0 - t) * cond_a.graph_embeddings[0] + t * cond_b.graph_embeddings[0] for t in ts],
+            axis=0,
+        )
+        interpolated_node_counts = _interpolate_integer_series(
+            cond_a.node_counts[0],
+            cond_b.node_counts[0],
+            ts,
+            minimum=1,
+        )
+        interpolated_edge_counts = _interpolate_integer_series(
+            cond_a.edge_counts[0],
+            cond_b.edge_counts[0],
+            ts,
+            minimum=0,
+        )
+
+        interpolated_histograms = None
+        if cond_a.node_label_histograms is not None and cond_b.node_label_histograms is not None:
+            interpolated_histograms = np.stack(
+                [
+                    (1.0 - t) * cond_a.node_label_histograms[0] + t * cond_b.node_label_histograms[0]
+                    for t in ts
+                ],
+                axis=0,
             )
-        
-        return results
+
+        interpolated_conditioning = GraphConditioningBatch(
+            graph_embeddings=interpolated_graph_embeddings,
+            node_counts=interpolated_node_counts,
+            edge_counts=interpolated_edge_counts,
+            node_label_histograms=interpolated_histograms,
+        )
+        decoded_slots = self._decode_with_feasibility_slots(
+            interpolated_conditioning,
+            apply_feasibility_filtering=apply_feasibility_filtering,
+        )
+        step_summary = pd.DataFrame(
+            {
+                "step": np.arange(1, len(ts) + 1),
+                "t": np.round(ts, 3),
+                "target_nodes": interpolated_node_counts,
+                "target_edges": interpolated_edge_counts,
+                "decoded": [graph is not None for graph in decoded_slots],
+            }
+        )
+        return {
+            "ts": ts,
+            "conditioning": interpolated_conditioning,
+            "decoded_slots": decoded_slots,
+            "generated_graphs": [graph for graph in decoded_slots if graph is not None],
+            "summary": step_summary,
+        }
 
     def mean(
         self,
@@ -1526,7 +1562,7 @@ class EqMDecompositionalGraphGenerator(object):
         """Compute a geometric mean graph via the SLERP barycentre of encodings."""
         graph_conditioning = self.graph_encode(graphs)
         Y = np.vstack(graph_conditioning.graph_embeddings)
-        centroid = scaled_slerp_average(Y)
+        centroid = e(Y)
         mean_node_count = int(round(np.mean(graph_conditioning.node_counts)))
         mean_edge_count = int(round(np.mean(graph_conditioning.edge_counts)))
         mean_hist = None
