@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import sys
 from typing import Callable
 
 import networkx as nx
 import numpy as np
 from sklearn.model_selection import train_test_split
+
+# Ensure local package imports work when notebooks run with cwd=notebooks/.
+_THIS_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _THIS_DIR.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 from AbstractGraph.abstract_graph_operators import compose, cycle, neighborhood, unlabel
 from AbstractGraph.feasibility import (
