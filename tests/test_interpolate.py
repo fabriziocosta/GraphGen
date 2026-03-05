@@ -2,7 +2,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from interpolate import _interpolate_integer_series, interpolate, sample_positive_endpoint_pair
+from eqm_decompositional_graph_generator.interpolate import (
+    _interpolate_integer_series,
+    interpolate,
+    sample_positive_endpoint_pair,
+)
 from eqm_decompositional_graph_generator.conditional_node_generator_base import GraphConditioningBatch
 
 
