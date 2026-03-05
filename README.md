@@ -2,6 +2,8 @@
 
 GraphGen is a Python toolkit for conditional graph generation with decompositional encoding/decoding and equilibrium-style node updates.
 
+Technical EqM internals and API details are documented in [`EqM_README.md`](EqM_README.md).
+
 The repository includes:
 - A trainable conditional node generator.
 - A graph-level generator that handles encoding, supervision construction, and decoding.
@@ -55,9 +57,7 @@ Typical high-level workflow:
 
 Notebook examples:
 - `notebooks/demo.ipynb`
-- `notebooks/demo2.ipynb`
 - `notebooks/demo_chem.ipynb`
-- `notebooks/demo_chem2.ipynb`
 - `notebooks/demo_optimization.ipynb`
 
 ## Running Tests
