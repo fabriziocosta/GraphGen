@@ -254,26 +254,6 @@ $$
 \tilde{x} = x + \sigma \varepsilon
 $$
 
-More precisely in this implementation, the corruption is feature-wise:
-
-$$
-\tilde{x} = x + s \odot \varepsilon
-$$
-
-where $s$ is a per-feature noise scale tensor. The degree channel uses reduced noise:
-
-$$
-s_d = \frac{\sigma}{f_{\mathrm{deg}}}
-$$
-
-where $f_{\mathrm{deg}}$ is `noise_degree_factor`.
-
-while other channels use:
-
-$$
-s = \sigma
-$$
-
 ### Target Score
 
 Using denoising score-matching logic, the target field for Gaussian corruption is:
@@ -282,25 +262,19 @@ $$
 g^*(\tilde{x}) = - \frac{\varepsilon}{\sigma}
 $$
 
-In the feature-wise version used here:
-
-$$
-g^*(\tilde{x}) = - \frac{\varepsilon}{s}
-$$
-
-where the division is elementwise.
+This is also the implementation target score.
 
 ### EqM Loss Used Here
 
 The implementation minimizes masked mean squared error between learned score and target score:
 
-$$\mathcal{L}_{\text{eqm}} = \mathbb{E}_{x,\varepsilon}\left[\left\|g_\theta(\tilde{x}, c) + \frac{\varepsilon}{s}\right\|^2\right]$$
+$$\mathcal{L}_{\text{eqm}} = \mathbb{E}_{x,\varepsilon}\left[\left\|g_\theta(\tilde{x}, c) + \frac{\varepsilon}{\sigma}\right\|^2\right]$$
 
 with masking applied to padded node positions.
 
 Expanded with mask $m$:
 
-$$\mathcal{L}_{\text{eqm}} = \frac{\sum_{b,i,d} m_{b,i}\left(g_\theta(\tilde{x}, c)_{b,i,d} + \frac{\varepsilon_{b,i,d}}{s_{b,i,d}}\right)^2}{\sum_{b,i,d} m_{b,i}}$$
+$$\mathcal{L}_{\text{eqm}} = \frac{\sum_{b,i,d} m_{b,i}\left(g_\theta(\tilde{x}, c)_{b,i,d} + \frac{\varepsilon_{b,i,d}}{\sigma}\right)^2}{\sum_{b,i,d} m_{b,i}}$$
 
 This is the primary generative loss in the current code.
 
@@ -309,7 +283,7 @@ This is the primary generative loss in the current code.
 After learning the score on noisy inputs, the implementation forms a denoised estimate:
 
 $$
-\hat{x} = \tilde{x} + s^2 \odot g_\theta(\tilde{x}, c)
+\hat{x} = \tilde{x} + \sigma^2 g_\theta(\tilde{x}, c)
 $$
 
 This is a feature-wise version of the usual denoising correction.
@@ -627,12 +601,6 @@ Practical effect:
 - decrease `eqm_sigma` if training is stable but generations look overly smooth or generic.
 
 Conceptually, `eqm_sigma` changes what score field the model learns, not how sampling uses that field.
-
-### `noise_degree_factor`
-
-Reduces corruption on the degree feature channel.
-
-This is useful because degree is often more discrete and semantically fragile than continuous latent channels.
 
 ### `sampling_step_size`
 
