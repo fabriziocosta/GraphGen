@@ -1586,7 +1586,7 @@ class EqMDecompositionalGraphGenerator(object):
         """Compute a geometric mean graph via the SLERP barycentre of encodings."""
         graph_conditioning = self.graph_encode(graphs)
         Y = np.vstack(graph_conditioning.graph_embeddings)
-        centroid = e(Y)
+        centroid = scaled_slerp_average(Y)
         mean_node_count = int(round(np.mean(graph_conditioning.node_counts)))
         mean_edge_count = int(round(np.mean(graph_conditioning.edge_counts)))
         mean_hist = None
