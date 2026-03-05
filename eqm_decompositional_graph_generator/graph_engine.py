@@ -127,9 +127,6 @@ def scaled_slerp_average(vectors: np.ndarray) -> np.ndarray:
     return avg_dir * avg_mag                         # (D,)
 
 
-# Suppress numpy warnings for invalid operations and divisions
-np.seterr(invalid='ignore', divide='ignore')
-
 # =============================================================================
 # EqMDecompositionalGraphDecoder Class
 # =============================================================================
@@ -539,16 +536,15 @@ class EqMDecompositionalGraphDecoder(object):
         if degree_predictions is None:
             raise RuntimeError("decode_adjacency_matrix requires explicit node_degree_predictions.")
 
-        predicted_probs_list: List[np.ndarray]
         if predicted_edge_probability_matrices is None:
             if channel_plan is not None and channel_plan.mode == "disabled":
                 raise RuntimeError(
                     "decode_adjacency_matrix cannot reconstruct graph structure because direct_edges are disabled "
                     "in the supervision plan."
                 )
-                raise RuntimeError(
-                    "decode_adjacency_matrix requires generator-provided edge probabilities."
-                )
+            raise RuntimeError(
+                "decode_adjacency_matrix requires generator-provided edge probabilities."
+            )
         else:
             if len(predicted_edge_probability_matrices) != len(node_embeddings_list):
                 raise ValueError(
@@ -645,7 +641,7 @@ class EqMDecompositionalGraphDecoder(object):
                 edge_labels = []
                 n_nodes = adj_mtx.shape[0]
                 for i in range(n_nodes):
-                    for j in range(n_nodes):
+                    for j in range(i + 1, n_nodes):
                         if adj_mtx[i, j] != 0:
                             edge_labels.append(edge_label_matrix[i, j])
                 predicted_edge_labels_list.append(np.asarray(edge_labels, dtype=object))
@@ -654,7 +650,7 @@ class EqMDecompositionalGraphDecoder(object):
         if channel_plan is not None and channel_plan.mode == "constant":
             predicted_edge_labels_list = []
             for adj in adj_mtx_list:
-                n_edges = int(np.sum(adj))
+                n_edges = int(np.sum(np.triu(adj, k=1)))
                 predicted_edge_labels_list.append(np.array([channel_plan.constant_value] * n_edges, dtype=object))
             return predicted_edge_labels_list
 
@@ -706,7 +702,7 @@ class EqMDecompositionalGraphDecoder(object):
                 edge_idx = 0
                 edge_attr = {}
                 for i in range(n_nodes):
-                    for j in range(n_nodes):
+                    for j in range(i + 1, n_nodes):
                         if adj_mtx[i, j] != 0:
                             edge_attr[(i, j)] = edge_labels[edge_idx]
                             edge_idx += 1

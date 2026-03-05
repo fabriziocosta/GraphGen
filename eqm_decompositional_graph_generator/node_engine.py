@@ -654,6 +654,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         num_edge_label_classes: int = 0,
         use_edge_label_head: bool = False,
         eqm_sigma: float = 0.2,
+        noise_degree_factor: float = 1.0,
         sampling_step_size: float = 0.05,
         sampling_steps: int = 100,
         langevin_noise_scale: float = 0.0,
@@ -671,6 +672,8 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
             raise ValueError("max_degree must be provided when initializing the EqM model.")
         if eqm_sigma <= 0:
             raise ValueError(f"eqm_sigma must be positive (got {eqm_sigma}).")
+        if noise_degree_factor <= 0:
+            raise ValueError(f"noise_degree_factor must be positive (got {noise_degree_factor}).")
         if sampling_step_size <= 0:
             raise ValueError(f"sampling_step_size must be positive (got {sampling_step_size}).")
         if sampling_steps <= 0:
@@ -723,6 +726,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         self.num_edge_label_classes = int(num_edge_label_classes)
         self.use_edge_label_head = bool(use_edge_label_head and num_edge_label_classes > 0)
         self.eqm_sigma = float(eqm_sigma)
+        self.noise_degree_factor = float(noise_degree_factor)
         self.sampling_step_size = float(sampling_step_size)
         self.sampling_steps = int(sampling_steps)
         self.langevin_noise_scale = float(langevin_noise_scale)
@@ -733,7 +737,6 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         self.cfg_condition_dropout_prob = float(cfg_condition_dropout_prob)
         self.cfg_null_target_strategy = str(cfg_null_target_strategy)
         self.use_guidance = False
-        self.noise_degree_factor = 1.0
         self.use_existence_head = True
         self.constant_existence_value = 1.0
 
@@ -897,7 +900,12 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         return latent_tokens
 
     def _build_noise_scale(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.full_like(x, self.eqm_sigma)
+        noise_scale = torch.full_like(x, self.eqm_sigma)
+        if x.dim() == 3 and 0 <= self.important_feature_index < x.size(-1):
+            noise_scale[..., self.important_feature_index] = (
+                noise_scale[..., self.important_feature_index] / self.noise_degree_factor
+            )
+        return noise_scale
 
     def _has_target_conditioning(self) -> bool:
         return self.guidance_enabled and self.target_condition_feature_count > 0
@@ -1908,6 +1916,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             num_edge_label_classes=0 if self.edge_label_classes_ is None else len(self.edge_label_classes_),
             use_edge_label_head=self.use_edge_label_head,
             eqm_sigma=self.eqm_sigma,
+            noise_degree_factor=self.noise_degree_factor,
             sampling_step_size=self.sampling_step_size,
             sampling_steps=self.sampling_steps,
             langevin_noise_scale=self.langevin_noise_scale,
@@ -1918,7 +1927,6 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             cfg_condition_dropout_prob=self.cfg_condition_dropout_prob,
             cfg_null_target_strategy=self.cfg_null_target_strategy,
         )
-        self.model.noise_degree_factor = self.noise_degree_factor
         self.model.use_existence_head = self.use_existence_head
         self.model.constant_existence_value = self.constant_existence_value
         self.edge_pos_weight_ = float(edge_pos_weight)

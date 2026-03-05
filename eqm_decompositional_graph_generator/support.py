@@ -64,8 +64,19 @@ import numpy as np
 import networkx as nx
 from toolz import curry
 import random
-from coco_grape.module.graph_duplicate_detection_estimator import GraphDuplicateDetectionEstimator
 from collections import defaultdict
+
+
+def _make_duplicate_detection_estimator():
+    try:
+        from coco_grape.module.graph_duplicate_detection_estimator import GraphDuplicateDetectionEstimator
+    except ImportError as exc:
+        raise ImportError(
+            "Graph duplicate filtering requires optional dependency 'coco-grape'. "
+            "Install it to use make_graphs_classification_dataset(), "
+            "make_two_types_graphs_classification_dataset(), or ArtificialGraphDatasetConstructor.sample()."
+        ) from exc
+    return GraphDuplicateDetectionEstimator()
 
 def _safe_random_tree(n: int) -> nx.Graph:
     """
@@ -152,6 +163,12 @@ def random_cycle_graph(n):
 
 @curry
 def random_regular_graph(d, n):
+    if n <= 0:
+        raise ValueError(f"n must be positive (got {n}).")
+    if d < 0 or d >= n:
+        raise ValueError(f"d must satisfy 0 <= d < n (got d={d}, n={n}).")
+    if (n * d) % 2 != 0:
+        raise ValueError(f"n*d must be even for a d-regular graph (got d={d}, n={n}).")
     g = nx.random_regular_graph(d, n)
     g = nx.convert_node_labels_to_integers(g)
     return g
@@ -192,7 +209,12 @@ def make_graph_generator(graph_type, instance_size):
             graph_generator = random_degree_seq(n, dmax)
 
     if graph_type == 'regular':
-        graph_generator = random_regular_graph(d=3, n=instance_size)
+        if instance_size == 1:
+            graph_generator = random_regular_graph(d=0, n=instance_size)
+        else:
+            default_degree = 3
+            regular_degree = default_degree if (instance_size * default_degree) % 2 == 0 else 2
+            graph_generator = random_regular_graph(d=regular_degree, n=instance_size)
 
     if graph_type == 'dense':
         graph_generator = random_dense_graph(n=instance_size, m=instance_size + instance_size // 2)
@@ -287,7 +309,7 @@ def make_graphs(graph_generator_target_type, graph_generator_context_type, targe
 def make_graphs_classification_dataset(graph_generator_target_type, graph_generator_context_type, target_size, context_size, alphabet_size, n_link_edges, num_graphs, attribute_generator=None):
     pos_graphs = make_graphs(graph_generator_target_type, graph_generator_context_type, target_size, context_size, alphabet_size, attribute_generator, n_link_edges, num_graphs, use_single_target=True)
     neg_graphs = make_graphs(graph_generator_target_type, graph_generator_context_type, target_size, context_size, alphabet_size, attribute_generator, n_link_edges, num_graphs, use_single_target=False)
-    gdde = GraphDuplicateDetectionEstimator()
+    gdde = _make_duplicate_detection_estimator()
     pos_graphs = gdde.fit_filter(pos_graphs)
     neg_graphs = gdde.filter(neg_graphs)
     targets = np.array([1]*len(pos_graphs)+[0]*len(neg_graphs))
@@ -297,7 +319,7 @@ def make_graphs_classification_dataset(graph_generator_target_type, graph_genera
 def make_two_types_graphs_classification_dataset(graph_generator_target_type_pos, graph_generator_context_type_pos, graph_generator_target_type_neg, graph_generator_context_type_neg, target_size, context_size, alphabet_size, n_link_edges, num_graphs, attribute_generator=None):
     pos_graphs = make_graphs(graph_generator_target_type_pos, graph_generator_context_type_pos, target_size, context_size, alphabet_size, attribute_generator, n_link_edges, num_graphs, use_single_target=True)
     neg_graphs = make_graphs(graph_generator_target_type_neg, graph_generator_context_type_neg, target_size, context_size, alphabet_size, attribute_generator, n_link_edges, num_graphs, use_single_target=True)
-    gdde = GraphDuplicateDetectionEstimator()
+    gdde = _make_duplicate_detection_estimator()
     pos_graphs = gdde.fit_filter(pos_graphs)
     neg_graphs = gdde.filter(neg_graphs)
     targets = np.array([1]*len(pos_graphs)+[0]*len(neg_graphs))
@@ -357,7 +379,7 @@ class ArtificialGraphDatasetConstructor(object):
                                  self.n_link_edges_neg, 
                                  n_samples, 
                                  use_single_target=True)
-        gdde = GraphDuplicateDetectionEstimator()
+        gdde = _make_duplicate_detection_estimator()
         pos_graphs = gdde.fit_filter(pos_graphs)
         neg_graphs = gdde.filter(neg_graphs)
         targets = np.array([1]*len(pos_graphs)+[0]*len(neg_graphs))
