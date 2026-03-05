@@ -232,9 +232,18 @@ def make_graph_generator(graph_type, instance_size):
     if graph_type == 'degree':
         n = instance_size
         dmax = 4
-        graph_generator = random_degree_seq(n, dmax)
-        while nx.is_connected(graph_generator) is not True:
-            graph_generator = random_degree_seq(n, dmax)
+        max_attempts = 128
+        graph_generator = None
+        for _ in range(max_attempts):
+            candidate = random_degree_seq(n, dmax)
+            if nx.is_connected(candidate):
+                graph_generator = candidate
+                break
+        if graph_generator is None:
+            raise RuntimeError(
+                "Unable to sample a connected degree-sequence graph "
+                f"after {max_attempts} attempts (n={n}, dmax={dmax})."
+            )
 
     if graph_type == 'regular':
         if instance_size == 1:
