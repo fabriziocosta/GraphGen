@@ -42,6 +42,9 @@ lightning_logs/
 *.ckpt
 .artifacts/
 **/.artifacts/
+PUBCHEM/
+notebooks/PUBCHEM/
+**/PUBCHEM/
 
 # ---- IDE / OS clutter ----
 .DS_Store
