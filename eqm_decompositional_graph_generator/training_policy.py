@@ -1,6 +1,7 @@
 """Training policy helpers for the node engine."""
 
 import contextlib
+import logging
 import os
 import sys
 import uuid
@@ -8,6 +9,26 @@ from typing import Tuple
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+
+
+_LITLOGGER_TIP_SNIPPET = "For seamless cloud logging and experiment tracking"
+
+
+class _SuppressLitLoggerTipFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:
+            return True
+        return _LITLOGGER_TIP_SNIPPET not in message
+
+
+def _install_lightning_log_filters() -> None:
+    logger = logging.getLogger("pytorch_lightning.utilities.rank_zero")
+    for existing_filter in logger.filters:
+        if isinstance(existing_filter, _SuppressLitLoggerTipFilter):
+            return
+    logger.addFilter(_SuppressLitLoggerTipFilter())
 
 
 @contextlib.contextmanager
@@ -72,6 +93,7 @@ def create_trainer(
     train_loader_length: int,
 ) -> pl.Trainer:
     """Create a Lightning trainer with the node engine defaults."""
+    _install_lightning_log_filters()
     return pl.Trainer(
         max_epochs=maximum_epochs,
         callbacks=callbacks,

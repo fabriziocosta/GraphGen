@@ -30,14 +30,34 @@ class MetricsLogger(pl.callbacks.Callback):
             ("node_count", "node_count_loss", float(getattr(pl_module, "lambda_node_count_importance", 0.0))),
             ("node_label", "node_label_ce", float(getattr(pl_module, "lambda_node_label_importance", 1.0))),
             ("edge_label", "edge_label_ce", float(getattr(pl_module, "lambda_edge_label_importance", 1.0))),
-            ("edge", "edge_ce", float(getattr(pl_module, "lambda_locality_importance", 1.0))),
+            (
+                "edge",
+                "edge_ce",
+                float(
+                    getattr(
+                        pl_module,
+                        "lambda_direct_edge_importance",
+                        getattr(pl_module, "lambda_locality_importance", 1.0),
+                    )
+                ),
+            ),
             ("edge_count", "edge_count_loss", float(getattr(pl_module, "lambda_edge_count_importance", 0.0))),
             (
                 "deg_edge_consistency",
                 "degree_edge_consistency_loss",
                 float(getattr(pl_module, "lambda_degree_edge_consistency_importance", 0.0)),
             ),
-            ("aux", "aux_locality_ce", float(getattr(pl_module, "lambda_auxiliary_locality_importance", 1.0))),
+            (
+                "aux",
+                "aux_locality_ce",
+                float(
+                    getattr(
+                        pl_module,
+                        "lambda_auxiliary_edge_importance",
+                        getattr(pl_module, "lambda_auxiliary_locality_importance", 1.0),
+                    )
+                ),
+            ),
         ]
 
         raw_total = float(metrics.get(f"{prefix}_total", torch.tensor(0.0)).item())

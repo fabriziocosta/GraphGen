@@ -150,15 +150,6 @@ The important distinction is:
 Those are not equivalent. A scalar count does not identify which latent node positions are active, and the EqM dynamics are free to explore alternative support sets before settling on a final one.
 
 At training time, the histogram is computed from the true graph node labels.
-Once the label vocabulary is fitted, calling:
-
-```python
-decompositional_encoder_decoder.graph_encode(graphs)
-```
-
-returns conditioning vectors that already include the concatenated node-label histogram.
-The intended generation path is therefore to reuse conditioning vectors extracted from
-real graphs, with the histogram already embedded in them.
 
 ### Outputs
 
@@ -745,15 +736,6 @@ c'_{b,m} = [c_{b,m} ; h_b]
 $$
 
 if the conditioning input is tokenized.
-
-In other words, the supported path in the current code is:
-
-1. `graph_encode(graphs)`
-   This extracts graph features, node counts, and edge counts from a real graph.
-
-`EqMDecompositionalNodeGenerator` no longer relies on an embedded node-label histogram
-inside the conditioning vector. Label histograms are evaluated after generation rather
-than injected directly as conditioning.
 
 ## Padding and Masking
 

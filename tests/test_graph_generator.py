@@ -8,7 +8,7 @@ from eqm_decompositional_graph_generator.graph_engine import (
     EqMDecompositionalGraphDecoder,
     EqMDecompositionalGraphGenerator,
 )
-from eqm_decompositional_graph_generator.node_engine import GeneratedNodeBatch
+from eqm_decompositional_graph_generator.node_engine import EqMDecompositionalNodeGenerator, GeneratedNodeBatch
 
 
 class _GraphVectorizer:
@@ -262,6 +262,19 @@ def test_parallel_decode_matches_serial_decode():
     for serial_graph, parallel_graph in zip(serial_graphs, parallel_graphs):
         assert sorted(serial_graph.nodes(data=True)) == sorted(parallel_graph.nodes(data=True))
         assert sorted(serial_graph.edges(data=True)) == sorted(parallel_graph.edges(data=True))
+
+
+def test_edge_importance_aliases_map_to_legacy_attributes():
+    model = EqMDecompositionalNodeGenerator(
+        lambda_direct_edge_importance=12.0,
+        lambda_auxiliary_edge_importance=7.0,
+        verbose=False,
+    )
+
+    assert model.lambda_direct_edge_importance == 12.0
+    assert model.lambda_locality_importance == 12.0
+    assert model.lambda_auxiliary_edge_importance == 7.0
+    assert model.lambda_auxiliary_locality_importance == 7.0
 
 
 def test_encode_paths_return_expected_shapes_and_counts():

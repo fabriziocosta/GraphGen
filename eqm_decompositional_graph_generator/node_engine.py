@@ -401,10 +401,12 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         lambda_edge_label_importance: float = 1.0,
         use_locality_supervision: bool = False,
         lambda_locality_importance: float = 1.0,
+        lambda_direct_edge_importance: Optional[float] = None,
         lambda_edge_count_importance: float = 0.0,
         lambda_degree_edge_consistency_importance: float = 0.0,
         use_auxiliary_locality_supervision: bool = False,
         lambda_auxiliary_locality_importance: float = 1.0,
+        lambda_auxiliary_edge_importance: Optional[float] = None,
         exist_pos_weight: Union[torch.Tensor, float] = 1.0,
         edge_pos_weight: Union[torch.Tensor, float] = 1.0,
         auxiliary_edge_pos_weight: Union[torch.Tensor, float] = 1.0,
@@ -486,11 +488,17 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         self.lambda_node_label_importance = lambda_node_label_importance
         self.lambda_edge_label_importance = lambda_edge_label_importance
         self.use_locality_supervision = bool(use_locality_supervision)
-        self.lambda_locality_importance = lambda_locality_importance
+        if lambda_direct_edge_importance is None:
+            lambda_direct_edge_importance = lambda_locality_importance
+        self.lambda_direct_edge_importance = float(lambda_direct_edge_importance)
+        self.lambda_locality_importance = self.lambda_direct_edge_importance
         self.lambda_edge_count_importance = float(lambda_edge_count_importance)
         self.lambda_degree_edge_consistency_importance = float(lambda_degree_edge_consistency_importance)
         self.use_auxiliary_locality_supervision = bool(use_auxiliary_locality_supervision)
-        self.lambda_auxiliary_locality_importance = lambda_auxiliary_locality_importance
+        if lambda_auxiliary_edge_importance is None:
+            lambda_auxiliary_edge_importance = lambda_auxiliary_locality_importance
+        self.lambda_auxiliary_edge_importance = float(lambda_auxiliary_edge_importance)
+        self.lambda_auxiliary_locality_importance = self.lambda_auxiliary_edge_importance
         self.num_node_label_classes = int(num_node_label_classes)
         self.use_node_label_head = bool(use_node_label_head and num_node_label_classes > 0)
         self.num_edge_label_classes = int(num_edge_label_classes)
@@ -999,7 +1007,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
                 edge_labels,
                 pos_weight=self.edge_pos_weight,
             )
-            total_loss = total_loss + self.lambda_locality_importance * edge_loss
+            total_loss = total_loss + self.lambda_direct_edge_importance * edge_loss
 
             with torch.no_grad():
                 edge_pred = (torch.sigmoid(edge_logits) > 0.5).float()
@@ -1061,7 +1069,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
                 aux_edge_labels,
                 pos_weight=self.auxiliary_edge_pos_weight,
             )
-            total_loss = total_loss + self.lambda_auxiliary_locality_importance * aux_edge_loss
+            total_loss = total_loss + self.lambda_auxiliary_edge_importance * aux_edge_loss
 
             with torch.no_grad():
                 aux_edge_pred = (torch.sigmoid(aux_edge_logits) > 0.5).float()
@@ -1125,7 +1133,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
                     edge_labels,
                     pos_weight=self.edge_pos_weight,
                 )
-                total_loss = total_loss + self.lambda_locality_importance * edge_loss
+                total_loss = total_loss + self.lambda_direct_edge_importance * edge_loss
 
                 edge_pred = (torch.sigmoid(edge_logits) > 0.5).float()
                 edge_acc = (edge_pred == edge_labels).float().mean()
@@ -1186,7 +1194,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
                     aux_edge_labels,
                     pos_weight=self.auxiliary_edge_pos_weight,
                 )
-                total_loss = total_loss + self.lambda_auxiliary_locality_importance * aux_edge_loss
+                total_loss = total_loss + self.lambda_auxiliary_edge_importance * aux_edge_loss
 
                 aux_edge_pred = (torch.sigmoid(aux_edge_logits) > 0.5).float()
                 aux_edge_acc = (aux_edge_pred == aux_edge_labels).float().mean()
@@ -1373,9 +1381,11 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         lambda_node_label_importance: float = 1.0,
         default_exist_pos_weight: float = 1.0,
         lambda_locality_importance: float = 1.0,
+        lambda_direct_edge_importance: Optional[float] = None,
         lambda_edge_count_importance: float = 0.0,
         lambda_degree_edge_consistency_importance: float = 0.0,
         lambda_auxiliary_locality_importance: float = 1.0,
+        lambda_auxiliary_edge_importance: Optional[float] = None,
         lambda_edge_label_importance: float = 1.0,
         pool_condition_tokens: bool = False,
         eqm_sigma: float = 0.2,
@@ -1418,10 +1428,16 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.lambda_node_label_importance = lambda_node_label_importance
         self.lambda_edge_label_importance = lambda_edge_label_importance
         self.default_exist_pos_weight = default_exist_pos_weight
-        self.lambda_locality_importance = lambda_locality_importance
+        if lambda_direct_edge_importance is None:
+            lambda_direct_edge_importance = lambda_locality_importance
+        self.lambda_direct_edge_importance = float(lambda_direct_edge_importance)
+        self.lambda_locality_importance = self.lambda_direct_edge_importance
         self.lambda_edge_count_importance = float(lambda_edge_count_importance)
         self.lambda_degree_edge_consistency_importance = float(lambda_degree_edge_consistency_importance)
-        self.lambda_auxiliary_locality_importance = lambda_auxiliary_locality_importance
+        if lambda_auxiliary_edge_importance is None:
+            lambda_auxiliary_edge_importance = lambda_auxiliary_locality_importance
+        self.lambda_auxiliary_edge_importance = float(lambda_auxiliary_edge_importance)
+        self.lambda_auxiliary_locality_importance = self.lambda_auxiliary_edge_importance
         self.pool_condition_tokens = bool(pool_condition_tokens)
         self.use_guidance = False
         self.use_locality_supervision = False
@@ -1969,10 +1985,12 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             lambda_edge_label_importance=self.lambda_edge_label_importance,
             use_locality_supervision=effective_locality,
             lambda_locality_importance=self.lambda_locality_importance,
+            lambda_direct_edge_importance=self.lambda_direct_edge_importance,
             lambda_edge_count_importance=self.lambda_edge_count_importance,
             lambda_degree_edge_consistency_importance=self.lambda_degree_edge_consistency_importance,
             use_auxiliary_locality_supervision=effective_auxiliary_locality,
             lambda_auxiliary_locality_importance=self.lambda_auxiliary_locality_importance,
+            lambda_auxiliary_edge_importance=self.lambda_auxiliary_edge_importance,
             exist_pos_weight=exist_pos_weight,
             edge_pos_weight=edge_pos_weight,
             auxiliary_edge_pos_weight=auxiliary_edge_pos_weight,
@@ -2122,7 +2140,6 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             metrics_logger=MetricsLogger(),
         )
         if int(self.verbose) >= 1:
-            print(f"Writing Lightning logs to {os.path.join(self.artifact_root_dir, 'lightning_logs')}")
             print(f"Writing checkpoints to {checkpoint_dir}")
         trainer = create_trainer(
             maximum_epochs=self.maximum_epochs,
