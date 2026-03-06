@@ -647,7 +647,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         verbose: bool = False,
         verbose_epoch_interval: int = 10,
         enable_early_stopping: bool = True,
-        early_stopping_monitor: str = "val_total",
+        early_stopping_monitor: str = "val_eqm",
         early_stopping_mode: str = "min",
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
@@ -1175,6 +1175,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
 
         self.log("train_total", total_loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
         self.log("train_recon", losses["eqm"], on_step=False, on_epoch=True, batch_size=batch_size)
+        self.log("train_eqm", losses["eqm"], on_step=False, on_epoch=True, batch_size=batch_size)
         self.log("train_deg_ce", losses["deg_ce"], on_step=False, on_epoch=True, batch_size=batch_size)
         if self.use_existence_head:
             self.log("train_exist", losses["exist"], on_step=False, on_epoch=True, batch_size=batch_size)
@@ -1264,6 +1265,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
 
             self.log("val_total", total_loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
             self.log("val_recon", losses["eqm"], on_step=False, on_epoch=True, batch_size=batch_size)
+            self.log("val_eqm", losses["eqm"], on_step=False, on_epoch=True, batch_size=batch_size)
             self.log("val_deg_ce", losses["deg_ce"], on_step=False, on_epoch=True, batch_size=batch_size)
             if self.use_existence_head:
                 self.log("val_exist", losses["exist"], on_step=False, on_epoch=True, batch_size=batch_size)
@@ -1424,7 +1426,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         verbose: bool = False,
         verbose_epoch_interval: int = 10,
         enable_early_stopping: bool = True,
-        early_stopping_monitor: str = "val_total",
+        early_stopping_monitor: str = "val_eqm",
         early_stopping_mode: str = "min",
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
