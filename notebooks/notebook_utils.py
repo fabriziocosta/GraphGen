@@ -75,9 +75,26 @@ def plot_sample(
 
 
 def infer_display_mode(graphs):
-    for graph in graphs[:5]:
-        if any("symbol" in attrs or "atomic_num" in attrs for _, attrs in graph.nodes(data=True)):
+    if not graphs:
+        return "not_molecule"
+
+    # Common atom symbols used by molecular datasets.
+    atom_symbols = {
+        "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+        "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+        "Br", "I",
+    }
+
+    for graph in graphs[:20]:
+        graph_meta = getattr(graph, "graph", {})
+        if any(key in graph_meta for key in ("smiles", "mol", "molecule", "inchi")):
             return "molecule"
+        for _, attrs in graph.nodes(data=True):
+            if "symbol" in attrs or "atomic_num" in attrs or "atom" in attrs:
+                return "molecule"
+            label = attrs.get("label")
+            if isinstance(label, str) and label in atom_symbols:
+                return "molecule"
     return "not_molecule"
 
 
