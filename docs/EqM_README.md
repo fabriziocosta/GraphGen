@@ -110,6 +110,8 @@ $$
 
 not a reconstruction vector and not a diffusion residual.
 
+Node existence should be interpreted as a learned occupancy process over node slots. In this repository, the global node count is conditioned explicitly, but the model still learns which specific slots should materialize. That allows generation to stay gradual: several candidate node slots can remain plausible early in sampling and only later coalesce into a committed support set.
+
 ## Inputs and Outputs
 
 ### Inputs
@@ -120,6 +122,7 @@ For a batch of graphs, the EqM module consumes:
   Shape $(B, N, D)$, padded node features.
 - `global_condition`
   Shape $(B, C)$ or $(B, M, C)$, graph-level conditioning vectors or tokens.
+- explicit graph-size channels inside the conditioning input, including node count and edge count.
 - `node_label_histogram`
   Shape $(B, K)$, a normalized histogram over the $K$ categorical node-label classes.
   In this repository, the histogram is concatenated to the graph-level conditioning vector
@@ -138,6 +141,13 @@ $$
   and $n$ is the number of valid nodes in the graph.
 - `node_mask`
   Shape $(B, N)$, boolean mask indicating valid node slots.
+
+The important distinction is:
+
+- the conditioned node count is a global cardinality target,
+- `node_mask` is the per-slot realization of that target.
+
+Those are not equivalent. A scalar count does not identify which latent node positions are active, and the EqM dynamics are free to explore alternative support sets before settling on a final one.
 
 At training time, the histogram is computed from the true graph node labels.
 Once the label vocabulary is fitted, calling:
@@ -179,6 +189,8 @@ The wrapper preserves the diffusion API and preprocessing behavior:
 - padded positions are masked during EqM training and attention.
 
 This matters because the EqM model operates in scaled feature space, while the downstream decoder expects outputs back in the original feature space.
+
+It also matters generatively: padding is not just a batching convenience. It provides a larger latent support over which the model can express tentative node occupancy decisions before the existence process sharpens into a final graph.
 
 ## Model Architecture
 
@@ -290,102 +302,356 @@ This is a feature-wise version of the usual denoising correction.
 
 That estimate is then reused for auxiliary supervised heads.
 
-## Auxiliary Losses
+## Auxiliary And Structural Losses
 
-The EqM generator is not only trained to learn a conditional energy landscape. It also predicts graph-structural properties through supervised heads.
+The EqM generator is not only trained to learn a conditional energy landscape. It also predicts graph-structural properties through supervised heads and soft global consistency terms.
 
-### Node Existence Loss
+The complete loss is easiest to understand as a sum of three groups:
 
-The existence target is derived from feature channel 0:
+1. generative score matching,
+2. local supervised heads,
+3. graph-level soft consistency penalties.
+
+### 1. EqM Score Loss
+
+This is the main generative term:
 
 $$
-y^{\text{exist}}_{b,i} = \mathbf{1}[x_{b,i,0} \ge 0.5]
+\mathcal{L}_{\text{eqm}}
 $$
 
-The model predicts logits:
+It teaches the model’s score field to match the denoising score implied by Gaussian corruption.
+
+Operationally:
+
+- acts on every valid feature dimension of every valid node,
+- is masked over padded rows,
+- is always present.
+
+This term is logged as:
+
+- `eqm`
+- `recon`
+
+### 2. Node Existence Loss
+
+The existence target is the true node-support mask:
+
+$$
+y^{\text{exist}}_{b,i} \in \{0, 1\}
+$$
+
+The existence head predicts logits:
 
 $$
 \ell^{\text{exist}}_{b,i}
 $$
 
-and the masked BCE loss is:
-
-$$\mathcal{L}_{\text{exist}} = \mathrm{MaskedBCEWithLogits}(\ell^{\text{exist}}, y^{\text{exist}})$$
-
-with class weighting via `exist_pos_weight`.
-
-### Degree Loss
-
-The degree target comes from the designated degree channel, inverse-scaled back to original degree space, rounded to a class index, and clipped:
+and the implementation applies binary cross-entropy with logits:
 
 $$
-y^{\text{deg}} = \mathrm{clip}(\mathrm{round}(\mathrm{unscale}(x_{\text{deg}})), 0, D_{\max})
+\mathcal{L}_{\text{exist}} = \mathrm{BCEWithLogits}(\ell^{\text{exist}}, y^{\text{exist}})
 $$
 
-The degree head produces:
+with positive-class reweighting through `exist_pos_weight`.
+
+Important detail:
+
+- this loss is evaluated on all padded slots, not only valid nodes,
+- real nodes act as positives,
+- padded rows act as true negatives.
+
+That means this term does two jobs:
+
+- teaches occupancy,
+- teaches the model not to materialize padded slots.
+
+This term is logged as:
+
+- `exist`
+
+If all training graphs have the same node count and the existence target is constant, the implementation disables the existence head and drops this term.
+
+### 3. Node Count Loss
+
+This is a soft global consistency term built on top of the existence head.
+
+The conditioning vector contains an explicit desired node count:
 
 $$
-\ell^{\text{deg}} \in \mathbb{R}^{D_{\max}+1}
+n^{\text{target}}_b
 $$
 
-and the masked classification loss is:
-
-$$\mathcal{L}_{\text{deg}} = \mathrm{MaskedCrossEntropy}(\ell^{\text{deg}}, y^{\text{deg}})$$
-
-### Node Label Loss
-
-Node labels are categorical and are supervised directly from the graph node attribute
-`label`.
-
-Let:
+The model’s existence logits imply an expected number of materialized nodes:
 
 $$
-y^{\text{label}}_{b,i} \in \{0, \dots, K-1\}
+\hat{n}_b = \sum_i \sigma(\ell^{\text{exist}}_{b,i})
 $$
 
-be the encoded node-label class for node $i$ in graph $b$, and let the node-label
-head produce logits:
+The implementation penalizes disagreement with a Huber loss:
+
+$$
+\mathcal{L}_{\text{node-count}} =
+\mathrm{Huber}(\hat{n}_b, n^{\text{target}}_b)
+$$
+
+This term is useful because the per-slot BCE loss does not by itself guarantee that the total occupancy mass matches the desired graph size.
+
+This term is logged as:
+
+- `node_count_loss`
+
+and weighted by:
+
+- `lambda_node_count_importance`
+
+### 4. Degree Classification Loss
+
+The degree target is the true node degree clipped to the supported class range:
+
+$$
+y^{\text{deg}}_{b,i} \in \{0, \dots, D_{\max}\}
+$$
+
+The degree head predicts logits:
+
+$$
+\ell^{\text{deg}}_{b,i} \in \mathbb{R}^{D_{\max}+1}
+$$
+
+and the implementation applies masked cross-entropy:
+
+$$
+\mathcal{L}_{\text{deg}} =
+\mathrm{MaskedCrossEntropy}(\ell^{\text{deg}}, y^{\text{deg}})
+$$
+
+Masking means:
+
+- only materialized nodes contribute,
+- padded rows do not contribute.
+
+This term is logged as:
+
+- `deg_ce`
+
+and weighted by:
+
+- `lambda_degree_importance`
+
+### 5. Node Label Loss
+
+If node labels are supervised and not collapsed to a constant, the node-label head predicts categorical logits:
 
 $$
 \ell^{\text{label}}_{b,i} \in \mathbb{R}^{K}
 $$
 
-The masked classification loss is:
+for encoded node-label targets:
 
-$$\mathcal{L}_{\text{label}} = \mathrm{MaskedCrossEntropy}(\ell^{\text{label}}, y^{\text{label}})$$
+$$
+y^{\text{label}}_{b,i} \in \{0, \dots, K-1\}
+$$
 
-This loss is applied only on valid node positions, using the same node mask used by
-the EqM loss.
+The loss is masked cross-entropy:
 
-The implementation logs this term as `label_ce`.
+$$
+\mathcal{L}_{\text{label}} =
+\mathrm{MaskedCrossEntropy}(\ell^{\text{label}}, y^{\text{label}})
+$$
 
-### Locality Supervision Loss
+Only valid nodes contribute.
 
-If edge supervision is enabled, pairs of node latents are scored by an edge MLP:
+This term is logged as:
+
+- `node_label_ce`
+
+and weighted by:
+
+- `lambda_node_label_importance`
+
+If node labels are constant or disabled by the supervision plan, this term is absent.
+
+### 6. Direct Edge Locality Loss
+
+If direct edge supervision is enabled, the model scores selected node pairs with an edge MLP:
 
 $$
 \ell^{\text{edge}}_{(i,j)} = f_{\text{edge}}(h_i, h_j)
 $$
 
-and trained with binary cross-entropy against supplied locality labels:
+and applies BCE with logits against direct edge-presence targets:
 
-$$\mathcal{L}_{\text{edge}} = \mathrm{BCEWithLogits}(\ell^{\text{edge}}, y^{\text{edge}})$$
+$$
+\mathcal{L}_{\text{edge}} =
+\mathrm{BCEWithLogits}(\ell^{\text{edge}}, y^{\text{edge}})
+$$
+
+This is the main structural pairwise supervision term used by the decoder path.
+
+This term is logged as:
+
+- `edge_ce`
+
+and weighted by:
+
+- `lambda_locality_importance`
+
+### 7. Edge Count Loss
+
+This is a soft global consistency term on the full soft adjacency field.
+
+From the dense edge-probability matrix:
+
+$$
+P_{b,ij}
+$$
+
+the implementation forms a symmetrized expected undirected edge count:
+
+$$
+\hat{m}_b = \sum_{i < j} \frac{P_{b,ij} + P_{b,ji}}{2}
+$$
+
+restricted to currently materialized node slots.
+
+The conditioning vector contains a desired edge count:
+
+$$
+m^{\text{target}}_b
+$$
+
+and the loss is:
+
+$$
+\mathcal{L}_{\text{edge-count}} =
+\mathrm{Huber}(\hat{m}_b, m^{\text{target}}_b)
+$$
+
+This term encourages the soft edge field to match the requested graph density before the decoder’s discrete optimization stage.
+
+This term is logged as:
+
+- `edge_count_loss`
+
+and weighted by:
+
+- `lambda_edge_count_importance`
+
+### 8. Degree/Edge Handshake Consistency Loss
+
+For any undirected graph, the handshake identity says:
+
+$$
+\sum_i \deg(i) = 2 |E|
+$$
+
+The implementation turns the degree logits into expected degrees:
+
+$$
+\hat{d}_{b,i} = \sum_{k=0}^{D_{\max}} k \cdot \mathrm{softmax}(\ell^{\text{deg}}_{b,i})_k
+$$
+
+and forms the expected total degree:
+
+$$
+\hat{D}_b = \sum_i \hat{d}_{b,i}
+$$
+
+over materialized nodes.
+
+It then compares that to twice the desired edge count:
+
+$$
+\mathcal{L}_{\text{deg-edge}} =
+\mathrm{Huber}(\hat{D}_b, 2 m^{\text{target}}_b)
+$$
+
+This term is not a replacement for degree supervision or edge supervision. It is a soft graph-level compatibility penalty tying the degree head and the edge-count target together.
+
+This term is logged as:
+
+- `degree_edge_consistency_loss`
+
+and weighted by:
+
+- `lambda_degree_edge_consistency_importance`
+
+### 9. Edge Label Loss
+
+If edge labels are supervised and not collapsed to a constant, the edge-label head predicts categorical logits for supervised node pairs:
+
+$$
+\ell^{\text{edge-label}}_{(i,j)} \in \mathbb{R}^{C}
+$$
+
+and the loss is standard cross-entropy:
+
+$$
+\mathcal{L}_{\text{edge-label}} =
+\mathrm{CrossEntropy}(\ell^{\text{edge-label}}, y^{\text{edge-label}})
+$$
+
+This term is logged as:
+
+- `edge_label_ce`
+
+and weighted by:
+
+- `lambda_edge_label_importance`
+
+### 10. Auxiliary Locality Loss
+
+If higher-horizon locality supervision is enabled, the model uses a second edge MLP to predict auxiliary locality targets for node pairs that are not necessarily direct edges.
+
+The loss is again BCE with logits:
+
+$$
+\mathcal{L}_{\text{aux}} =
+\mathrm{BCEWithLogits}(\ell^{\text{aux}}, y^{\text{aux}})
+$$
+
+This term is intended as representation regularization rather than as the primary decoder-facing edge signal.
+
+This term is logged as:
+
+- `aux_locality_ce`
+
+and weighted by:
+
+- `lambda_auxiliary_locality_importance`
 
 ## Total Training Objective
 
-The full objective used in the implementation is:
+The implementation builds `total_loss` additively from whichever terms are active for the current dataset and supervision plan:
 
-$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{eqm}} + \lambda_{\text{exist}} \mathcal{L}_{\text{exist}} + \lambda_{\text{deg}} \mathcal{L}_{\text{deg}} + \lambda_{\text{label}} \mathcal{L}_{\text{label}} + \lambda_{\text{local}} \mathcal{L}_{\text{edge}}$$
+$$
+\mathcal{L}_{\text{total}} =
+\mathcal{L}_{\text{eqm}}
++ \lambda_{\text{deg}} \mathcal{L}_{\text{deg}}
++ \lambda_{\text{exist}} \mathcal{L}_{\text{exist}}
++ \lambda_{\text{node-count}} \mathcal{L}_{\text{node-count}}
++ \lambda_{\text{node-label}} \mathcal{L}_{\text{label}}
++ \lambda_{\text{edge}} \mathcal{L}_{\text{edge}}
++ \lambda_{\text{edge-count}} \mathcal{L}_{\text{edge-count}}
++ \lambda_{\text{deg-edge}} \mathcal{L}_{\text{deg-edge}}
++ \lambda_{\text{edge-label}} \mathcal{L}_{\text{edge-label}}
++ \lambda_{\text{aux}} \mathcal{L}_{\text{aux}}
+$$
 
-when locality supervision is enabled.
+subject to these activation rules:
 
-Otherwise:
+- `eqm` and `deg` are always present,
+- `exist` is present only if the existence head is enabled,
+- `node-count` is present only if the existence head is enabled and `lambda_node_count_importance > 0`,
+- `node-label` is present only if the node-label head is enabled,
+- `edge` is present only if direct locality supervision is enabled,
+- `edge-count` is present only if the direct edge head is enabled and `lambda_edge_count_importance > 0`,
+- `deg-edge` is present only if `lambda_degree_edge_consistency_importance > 0`,
+- `edge-label` is present only if the edge-label head is enabled,
+- `aux` is present only if auxiliary locality supervision is enabled.
 
-$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{eqm}} + \lambda_{\text{exist}} \mathcal{L}_{\text{exist}} + \lambda_{\text{deg}} \mathcal{L}_{\text{deg}} + \lambda_{\text{label}} \mathcal{L}_{\text{label}}$$
-
-If the dataset has a degenerate fixed-size existence target, the implementation disables
-the existence head automatically and drops $\mathcal{L}_{\text{exist}}$ from the
-effective objective.
+So the actual total objective for any one run is a dataset- and configuration-dependent subset of the expression above.
 
 ## Sampling
 
@@ -664,9 +930,33 @@ Weight on degree supervision.
 
 Weight on node existence supervision.
 
+### `lambda_node_count_importance`
+
+Weight on the soft node-count consistency loss.
+
 ### `lambda_locality_importance`
 
 Weight on locality supervision.
+
+### `lambda_edge_count_importance`
+
+Weight on the soft edge-count consistency loss.
+
+### `lambda_degree_edge_consistency_importance`
+
+Weight on the soft handshake-consistency loss tying total degree mass to twice the desired edge count.
+
+### `lambda_node_label_importance`
+
+Weight on node-label supervision.
+
+### `lambda_edge_label_importance`
+
+Weight on edge-label supervision.
+
+### `lambda_auxiliary_locality_importance`
+
+Weight on auxiliary higher-horizon locality supervision.
 
 ## Training Metrics
 
@@ -682,6 +972,14 @@ The EqM generator records and plots:
   Node existence BCE loss.
 - `locality`
   Optional locality supervision loss.
+
+Additional loss terms may be logged even if they are not plotted by default:
+
+- `node_count_loss`
+- `edge_count_loss`
+- `degree_edge_consistency_loss`
+- `edge_label_ce`
+- `aux_locality_ce`
 
 With `verbose=True`, the model plots these at the end of training through `on_train_end()`.
 

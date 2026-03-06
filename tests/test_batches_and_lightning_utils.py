@@ -6,6 +6,7 @@ import warnings
 from eqm_decompositional_graph_generator.node_engine import (
     GeneratedNodeBatch,
     EqMDecompositionalNodeGenerator,
+    EqMDecompositionalNodeGeneratorModule,
     GraphConditioningBatch,
     MetricsLogger,
     NodeGenerationBatch,
@@ -140,3 +141,60 @@ def test_update_ema_metric_tracks_smoothed_validation_signal():
     assert pl_module._ema_metrics["val_eqm"] == pytest.approx(90.0)
     assert trainer.callback_metrics["val_eqm_ema"].item() == pytest.approx(90.0)
     assert trainer.logged_metrics["val_eqm_ema"].item() == pytest.approx(90.0)
+
+
+def test_compute_edge_count_loss_matches_target_on_consistent_probabilities():
+    edge_probs = torch.tensor(
+        [[[0.0, 0.8], [0.8, 0.0]]],
+        dtype=torch.float32,
+    )
+    node_presence_mask = torch.tensor([[True, True]])
+    target_edge_counts = torch.tensor([1.0], dtype=torch.float32)
+
+    loss = EqMDecompositionalNodeGeneratorModule._compute_edge_count_loss(
+        edge_probs=edge_probs,
+        node_presence_mask=node_presence_mask,
+        target_edge_counts=target_edge_counts,
+    )
+
+    assert loss.item() == pytest.approx(0.02, abs=1e-6)
+
+
+def test_compute_degree_edge_consistency_loss_is_zero_when_handshake_identity_matches():
+    logits_deg = torch.tensor(
+        [[[ -10.0, 10.0], [ -10.0, 10.0]]],
+        dtype=torch.float32,
+    )
+    node_presence_mask = torch.tensor([[True, True]])
+    target_edge_counts = torch.tensor([1.0], dtype=torch.float32)
+
+    loss = EqMDecompositionalNodeGeneratorModule(
+        number_of_rows_per_example=2,
+        input_feature_dimension=2,
+        condition_feature_dimension=3,
+        latent_embedding_dimension=4,
+        number_of_transformer_layers=1,
+        transformer_attention_head_count=1,
+        max_degree=1,
+    )._compute_degree_edge_consistency_loss(
+        logits_deg=logits_deg,
+        node_presence_mask=node_presence_mask,
+        target_edge_counts=target_edge_counts,
+    )
+
+    assert loss.item() == pytest.approx(0.0, abs=1e-4)
+
+
+def test_compute_node_count_loss_is_zero_when_expected_count_matches():
+    logits_exist = torch.tensor(
+        [[10.0, 10.0, -10.0]],
+        dtype=torch.float32,
+    )
+    target_node_counts = torch.tensor([2.0], dtype=torch.float32)
+
+    loss = EqMDecompositionalNodeGeneratorModule._compute_node_count_loss(
+        logits_exist=logits_exist,
+        target_node_counts=target_node_counts,
+    )
+
+    assert loss.item() == pytest.approx(0.0, abs=1e-4)

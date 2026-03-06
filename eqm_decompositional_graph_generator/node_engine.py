@@ -381,7 +381,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         verbose: bool = False,
         verbose_epoch_interval: int = 10,
         enable_early_stopping: bool = True,
-        early_stopping_monitor: str = "val_eqm_ema",
+        early_stopping_monitor: str = "val_total",
         early_stopping_mode: str = "min",
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
@@ -396,10 +396,13 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         degree_min_val: float = 0.0,
         degree_range_val: float = 1.0,
         lambda_node_exist_importance: float = 1.0,
+        lambda_node_count_importance: float = 0.0,
         lambda_node_label_importance: float = 1.0,
         lambda_edge_label_importance: float = 1.0,
         use_locality_supervision: bool = False,
         lambda_locality_importance: float = 1.0,
+        lambda_edge_count_importance: float = 0.0,
+        lambda_degree_edge_consistency_importance: float = 0.0,
         use_auxiliary_locality_supervision: bool = False,
         lambda_auxiliary_locality_importance: float = 1.0,
         exist_pos_weight: Union[torch.Tensor, float] = 1.0,
@@ -417,6 +420,12 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         guidance_enabled: bool = False,
         target_condition_start_index: int = 0,
         target_condition_feature_count: int = 0,
+        node_count_condition_index: Optional[int] = None,
+        node_count_condition_scale: float = 1.0,
+        node_count_condition_min: float = 0.0,
+        edge_count_condition_index: Optional[int] = None,
+        edge_count_condition_scale: float = 1.0,
+        edge_count_condition_min: float = 0.0,
         cfg_condition_dropout_prob: float = 0.1,
         cfg_null_target_strategy: str = "zero",
     ):
@@ -473,10 +482,13 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         self.lambda_degree_importance = lambda_degree_importance
         self.degree_temperature = degree_temperature
         self.lambda_node_exist_importance = lambda_node_exist_importance
+        self.lambda_node_count_importance = float(lambda_node_count_importance)
         self.lambda_node_label_importance = lambda_node_label_importance
         self.lambda_edge_label_importance = lambda_edge_label_importance
         self.use_locality_supervision = bool(use_locality_supervision)
         self.lambda_locality_importance = lambda_locality_importance
+        self.lambda_edge_count_importance = float(lambda_edge_count_importance)
+        self.lambda_degree_edge_consistency_importance = float(lambda_degree_edge_consistency_importance)
         self.use_auxiliary_locality_supervision = bool(use_auxiliary_locality_supervision)
         self.lambda_auxiliary_locality_importance = lambda_auxiliary_locality_importance
         self.num_node_label_classes = int(num_node_label_classes)
@@ -495,6 +507,16 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         self.target_condition_feature_count = int(
             0 if target_condition_feature_count is None else target_condition_feature_count
         )
+        self.node_count_condition_index = (
+            None if node_count_condition_index is None else int(node_count_condition_index)
+        )
+        self.node_count_condition_scale = float(node_count_condition_scale)
+        self.node_count_condition_min = float(node_count_condition_min)
+        self.edge_count_condition_index = (
+            None if edge_count_condition_index is None else int(edge_count_condition_index)
+        )
+        self.edge_count_condition_scale = float(edge_count_condition_scale)
+        self.edge_count_condition_min = float(edge_count_condition_min)
         self.cfg_condition_dropout_prob = float(cfg_condition_dropout_prob)
         self.cfg_null_target_strategy = str(cfg_null_target_strategy)
         self.use_guidance = False
@@ -608,6 +630,107 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         diagonal_mask = torch.eye(node_count, dtype=torch.bool, device=latent_tokens.device).unsqueeze(0)
         edge_probs = edge_probs.masked_fill(diagonal_mask, 0.0)
         return edge_probs
+
+    @staticmethod
+    def _compute_edge_count_loss(
+        edge_probs: torch.Tensor,
+        node_presence_mask: torch.Tensor,
+        target_edge_counts: torch.Tensor,
+    ) -> torch.Tensor:
+        """Match the expected undirected edge count to the graph target count.
+
+        Args:
+            edge_probs (torch.Tensor): Dense ordered edge probabilities with shape (B, N, N).
+            node_presence_mask (torch.Tensor): Boolean node-validity mask with shape (B, N).
+            target_edge_counts (torch.Tensor): True graph edge counts with shape (B,).
+
+        Returns:
+            torch.Tensor: Scalar Huber loss on expected versus target edge counts.
+        """
+        presence = node_presence_mask.to(dtype=edge_probs.dtype)
+        pair_mask = presence.unsqueeze(1) * presence.unsqueeze(2)
+        sym_edge_probs = 0.5 * (edge_probs + edge_probs.transpose(1, 2))
+        sym_edge_probs = sym_edge_probs * pair_mask
+        upper_mask = torch.triu(
+            torch.ones_like(sym_edge_probs, dtype=torch.bool),
+            diagonal=1,
+        )
+        expected_edge_counts = sym_edge_probs.masked_select(upper_mask).reshape(edge_probs.shape[0], -1).sum(dim=1)
+        return F.huber_loss(
+            expected_edge_counts,
+            target_edge_counts.to(dtype=edge_probs.dtype),
+            reduction="mean",
+        )
+
+    def _recover_edge_count_targets(self, global_condition: torch.Tensor) -> torch.Tensor:
+        """Recover unscaled edge-count targets from the scaled conditioning tensor.
+
+        Args:
+            global_condition (torch.Tensor): Input value.
+
+        Returns:
+            torch.Tensor: Computed result.
+        """
+        if self.edge_count_condition_index is None:
+            raise RuntimeError("Edge-count loss requires edge_count_condition_index to be configured.")
+        scaled_edge_counts = global_condition[:, self.edge_count_condition_index]
+        if abs(self.edge_count_condition_scale) < 1e-12:
+            return torch.full_like(scaled_edge_counts, self.edge_count_condition_min)
+        return (scaled_edge_counts - self.edge_count_condition_min) / self.edge_count_condition_scale
+
+    def _recover_node_count_targets(self, global_condition: torch.Tensor) -> torch.Tensor:
+        """Recover unscaled node-count targets from the scaled conditioning tensor."""
+        if self.node_count_condition_index is None:
+            raise RuntimeError("Node-count loss requires node_count_condition_index to be configured.")
+        scaled_node_counts = global_condition[:, self.node_count_condition_index]
+        if abs(self.node_count_condition_scale) < 1e-12:
+            return torch.full_like(scaled_node_counts, self.node_count_condition_min)
+        return (scaled_node_counts - self.node_count_condition_min) / self.node_count_condition_scale
+
+    @staticmethod
+    def _compute_node_count_loss(
+        logits_exist: torch.Tensor,
+        target_node_counts: torch.Tensor,
+    ) -> torch.Tensor:
+        """Match expected node count to the conditioned graph size target."""
+        expected_node_counts = torch.sigmoid(logits_exist).sum(dim=1)
+        return F.huber_loss(
+            expected_node_counts,
+            target_node_counts.to(dtype=expected_node_counts.dtype),
+            reduction="mean",
+        )
+
+    def _compute_degree_edge_consistency_loss(
+        self,
+        logits_deg: torch.Tensor,
+        node_presence_mask: torch.Tensor,
+        target_edge_counts: torch.Tensor,
+    ) -> torch.Tensor:
+        """Match expected total degree to twice the target edge count.
+
+        Args:
+            logits_deg (torch.Tensor): Degree logits with shape (B, N, D_max+1).
+            node_presence_mask (torch.Tensor): Boolean node-validity mask with shape (B, N).
+            target_edge_counts (torch.Tensor): True graph edge counts with shape (B,).
+
+        Returns:
+            torch.Tensor: Scalar Huber loss on the handshake identity.
+        """
+        degree_values = torch.arange(
+            logits_deg.shape[-1],
+            device=logits_deg.device,
+            dtype=logits_deg.dtype,
+        )
+        deg_probs = torch.softmax(logits_deg, dim=-1)
+        expected_degrees = (deg_probs * degree_values.view(1, 1, -1)).sum(dim=-1)
+        expected_total_degree = (
+            expected_degrees * node_presence_mask.to(dtype=expected_degrees.dtype)
+        ).sum(dim=1)
+        return F.huber_loss(
+            expected_total_degree,
+            2.0 * target_edge_counts.to(dtype=expected_total_degree.dtype),
+            reduction="mean",
+        )
 
     def _compute_edge_label_logits(self, latent_tokens: torch.Tensor) -> torch.Tensor:
         """Evaluate the edge-label head on every ordered node pair.
@@ -885,6 +1008,40 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
             self.log("train_edge_ce", edge_loss, on_step=False, on_epoch=True, batch_size=batch_size)
             self.log("train_edge_acc", edge_acc, on_step=False, on_epoch=True, batch_size=batch_size)
 
+        if self.use_locality_supervision and self.lambda_edge_count_importance > 0.0:
+            edge_probs_full = self._compute_edge_probability_matrices(latent_tokens)
+            edge_count_loss = self._compute_edge_count_loss(
+                edge_probs=edge_probs_full,
+                node_presence_mask=node_presence_mask,
+                target_edge_counts=self._recover_edge_count_targets(global_condition),
+            )
+            total_loss = total_loss + self.lambda_edge_count_importance * edge_count_loss
+            self.log("train_edge_count_loss", edge_count_loss, on_step=False, on_epoch=True, batch_size=batch_size)
+        if self.use_existence_head and self.lambda_node_count_importance > 0.0:
+            node_count_loss = self._compute_node_count_loss(
+                logits_exist=self.exist_head(latent_tokens).squeeze(-1),
+                target_node_counts=self._recover_node_count_targets(global_condition),
+            )
+            total_loss = total_loss + self.lambda_node_count_importance * node_count_loss
+            self.log("train_node_count_loss", node_count_loss, on_step=False, on_epoch=True, batch_size=batch_size)
+        if self.lambda_degree_edge_consistency_importance > 0.0:
+            degree_edge_consistency_loss = self._compute_degree_edge_consistency_loss(
+                logits_deg=self.degree_head(latent_tokens),
+                node_presence_mask=node_presence_mask,
+                target_edge_counts=self._recover_edge_count_targets(global_condition),
+            )
+            total_loss = (
+                total_loss
+                + self.lambda_degree_edge_consistency_importance * degree_edge_consistency_loss
+            )
+            self.log(
+                "train_degree_edge_consistency_loss",
+                degree_edge_consistency_loss,
+                on_step=False,
+                on_epoch=True,
+                batch_size=batch_size,
+            )
+
         if self.use_edge_label_head and edge_label_idx.numel() > 0:
             b, i, j = edge_label_idx.unbind(1)
             h_i = latent_tokens[b, i]
@@ -975,6 +1132,40 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
 
                 self.log("val_edge_ce", edge_loss, on_step=False, on_epoch=True, batch_size=batch_size)
                 self.log("val_edge_acc", edge_acc, on_step=False, on_epoch=True, batch_size=batch_size)
+
+            if self.use_locality_supervision and self.lambda_edge_count_importance > 0.0:
+                edge_probs_full = self._compute_edge_probability_matrices(latent_tokens)
+                edge_count_loss = self._compute_edge_count_loss(
+                    edge_probs=edge_probs_full,
+                    node_presence_mask=node_presence_mask,
+                    target_edge_counts=self._recover_edge_count_targets(global_condition),
+                )
+                total_loss = total_loss + self.lambda_edge_count_importance * edge_count_loss
+                self.log("val_edge_count_loss", edge_count_loss, on_step=False, on_epoch=True, batch_size=batch_size)
+            if self.use_existence_head and self.lambda_node_count_importance > 0.0:
+                node_count_loss = self._compute_node_count_loss(
+                    logits_exist=self.exist_head(latent_tokens).squeeze(-1),
+                    target_node_counts=self._recover_node_count_targets(global_condition),
+                )
+                total_loss = total_loss + self.lambda_node_count_importance * node_count_loss
+                self.log("val_node_count_loss", node_count_loss, on_step=False, on_epoch=True, batch_size=batch_size)
+            if self.lambda_degree_edge_consistency_importance > 0.0:
+                degree_edge_consistency_loss = self._compute_degree_edge_consistency_loss(
+                    logits_deg=self.degree_head(latent_tokens),
+                    node_presence_mask=node_presence_mask,
+                    target_edge_counts=self._recover_edge_count_targets(global_condition),
+                )
+                total_loss = (
+                    total_loss
+                    + self.lambda_degree_edge_consistency_importance * degree_edge_consistency_loss
+                )
+                self.log(
+                    "val_degree_edge_consistency_loss",
+                    degree_edge_consistency_loss,
+                    on_step=False,
+                    on_epoch=True,
+                    batch_size=batch_size,
+                )
 
             if self.use_edge_label_head and edge_label_idx.numel() > 0:
                 b, i, j = edge_label_idx.unbind(1)
@@ -1166,7 +1357,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         verbose: bool = False,
         verbose_epoch_interval: int = 10,
         enable_early_stopping: bool = True,
-        early_stopping_monitor: str = "val_eqm_ema",
+        early_stopping_monitor: str = "val_total",
         early_stopping_mode: str = "min",
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
@@ -1178,9 +1369,12 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         lambda_degree_importance: float = 1.0,
         degree_temperature: Optional[float] = None,
         lambda_node_exist_importance: float = 1.0,
+        lambda_node_count_importance: float = 0.0,
         lambda_node_label_importance: float = 1.0,
         default_exist_pos_weight: float = 1.0,
         lambda_locality_importance: float = 1.0,
+        lambda_edge_count_importance: float = 0.0,
+        lambda_degree_edge_consistency_importance: float = 0.0,
         lambda_auxiliary_locality_importance: float = 1.0,
         lambda_edge_label_importance: float = 1.0,
         pool_condition_tokens: bool = False,
@@ -1220,10 +1414,13 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.lambda_degree_importance = lambda_degree_importance
         self.degree_temperature = degree_temperature
         self.lambda_node_exist_importance = lambda_node_exist_importance
+        self.lambda_node_count_importance = float(lambda_node_count_importance)
         self.lambda_node_label_importance = lambda_node_label_importance
         self.lambda_edge_label_importance = lambda_edge_label_importance
         self.default_exist_pos_weight = default_exist_pos_weight
         self.lambda_locality_importance = lambda_locality_importance
+        self.lambda_edge_count_importance = float(lambda_edge_count_importance)
+        self.lambda_degree_edge_consistency_importance = float(lambda_degree_edge_consistency_importance)
         self.lambda_auxiliary_locality_importance = lambda_auxiliary_locality_importance
         self.pool_condition_tokens = bool(pool_condition_tokens)
         self.use_guidance = False
@@ -1271,6 +1468,8 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.target_condition_dim_ = 0
         self.target_condition_start_ = None
         self.guidance_enabled_ = False
+        self.node_count_condition_index_ = None
+        self.edge_count_condition_index_ = None
 
         self.number_of_rows_per_example = None
         self.input_feature_dimension = None
@@ -1639,6 +1838,8 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             self.edge_label_to_index_ = None
 
         self.condition_feature_dimension = y_array.shape[1]
+        self.node_count_condition_index_ = int(base_condition_array.shape[1] - 2)
+        self.edge_count_condition_index_ = int(base_condition_array.shape[1] - 1)
 
         self._fit_scalers(X_array, y_array)
 
@@ -1684,10 +1885,36 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         if self.verbose:
             if effective_locality:
                 print("Direct edge supervision enabled: horizon-1 edge presence will be learned and used by the decoder.")
+                if self.lambda_edge_count_importance > 0.0:
+                    print(
+                        "Soft edge-count supervision enabled: "
+                        f"lambda_edge_count_importance={self.lambda_edge_count_importance:.3f}."
+                    )
+                if self.lambda_node_count_importance > 0.0:
+                    print(
+                        "Soft node-count supervision enabled: "
+                        f"lambda_node_count_importance={self.lambda_node_count_importance:.3f}."
+                    )
+                if self.lambda_degree_edge_consistency_importance > 0.0:
+                    print(
+                        "Degree/edge-count consistency supervision enabled: "
+                        f"lambda_degree_edge_consistency_importance="
+                        f"{self.lambda_degree_edge_consistency_importance:.3f}."
+                    )
             elif planned_direct_edges:
                 print("Direct edge supervision disabled at setup time: the plan requested it but usable training pairs were not supplied.")
             else:
                 print("Direct edge supervision disabled: the supervision plan does not request horizon-1 edge prediction.")
+            if self.lambda_node_count_importance > 0.0 and not self.use_existence_head:
+                print(
+                    "Soft node-count supervision requested, but the existence head is disabled; "
+                    "the node-count loss will be skipped."
+                )
+            if self.lambda_edge_count_importance > 0.0 and not effective_locality:
+                print(
+                    "Soft edge-count supervision requested, but no direct edge head is active; "
+                    "the edge-count loss will be skipped."
+                )
 
             if effective_auxiliary_locality:
                 print("Auxiliary locality supervision enabled: higher-horizon locality pairs will be used only as an encoding regularizer.")
@@ -1737,10 +1964,13 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             degree_min_val=deg_min_val,
             degree_range_val=deg_range_val,
             lambda_node_exist_importance=self.lambda_node_exist_importance,
+            lambda_node_count_importance=self.lambda_node_count_importance,
             lambda_node_label_importance=self.lambda_node_label_importance,
             lambda_edge_label_importance=self.lambda_edge_label_importance,
             use_locality_supervision=effective_locality,
             lambda_locality_importance=self.lambda_locality_importance,
+            lambda_edge_count_importance=self.lambda_edge_count_importance,
+            lambda_degree_edge_consistency_importance=self.lambda_degree_edge_consistency_importance,
             use_auxiliary_locality_supervision=effective_auxiliary_locality,
             lambda_auxiliary_locality_importance=self.lambda_auxiliary_locality_importance,
             exist_pos_weight=exist_pos_weight,
@@ -1758,6 +1988,12 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             guidance_enabled=self.guidance_enabled_,
             target_condition_start_index=self.target_condition_start_,
             target_condition_feature_count=self.target_condition_dim_,
+            node_count_condition_index=self.node_count_condition_index_,
+            node_count_condition_scale=float(self.y_scaler.scale_[self.node_count_condition_index_]),
+            node_count_condition_min=float(self.y_scaler.min_[self.node_count_condition_index_]),
+            edge_count_condition_index=self.edge_count_condition_index_,
+            edge_count_condition_scale=float(self.y_scaler.scale_[self.edge_count_condition_index_]),
+            edge_count_condition_min=float(self.y_scaler.min_[self.edge_count_condition_index_]),
             cfg_condition_dropout_prob=self.cfg_condition_dropout_prob,
             cfg_null_target_strategy=self.cfg_null_target_strategy,
             early_stopping_ema_alpha=self.early_stopping_ema_alpha,

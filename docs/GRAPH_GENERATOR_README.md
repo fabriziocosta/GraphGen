@@ -94,6 +94,8 @@ This holds graph-level conditions:
 
 This object is used both during training and generation.
 
+`node_counts` is a global size condition, not a per-slot support decision. It tells the generator how large the graph should be, but it does not determine which latent node slots will survive into the final graph.
+
 ### `NodeGenerationBatch`
 
 This holds padded node-level supervision for the conditional model:
@@ -105,6 +107,15 @@ This holds padded node-level supervision for the conditional model:
 - optional direct edge supervision
 - optional edge label supervision
 - optional auxiliary locality supervision
+
+`node_presence_mask` is not redundant with `node_counts`.
+
+It serves two roles:
+
+- during training, it marks which padded rows correspond to real nodes,
+- during generation, it represents the local occupancy pattern that realizes the global node-count target.
+
+This distinction matters because generation is not treated as “the first `k` rows exist by construction”. The model is allowed to explore several candidate node slots and then gradually coalesce onto a final support set.
 
 ### `GeneratedNodeBatch`
 
@@ -118,6 +129,13 @@ This is the output of the conditional node generator during inference:
 - optional edge label matrices.
 
 The decoder consumes this object and reconstructs `networkx` graphs.
+
+Conceptually:
+
+- `node_counts` says how many nodes the graph should contain,
+- `node_presence_mask` says which specific node slots are currently materialized.
+
+The current architecture keeps both because the generation process is allowed to be gradual and competitive rather than committing to a fixed support immediately.
 
 ## Training Architecture
 
@@ -251,6 +269,8 @@ This produces `GeneratedNodeBatch`, which may contain:
 - edge labels.
 
 The exact set depends on the supervision plan and the fitted model heads.
+
+The intended interpretation is that node existence is an occupancy process, not just a padding artifact. During generation, the model can temporarily distribute probability mass across several candidate node slots. As the relaxation proceeds, those candidates can compete and collapse to a final materialized node set that is consistent with the requested graph size and the rest of the predicted structure.
 
 ### 3. Decode Graphs
 

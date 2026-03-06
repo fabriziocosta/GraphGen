@@ -27,9 +27,16 @@ class MetricsLogger(pl.callbacks.Callback):
             ("eqm", "recon", 1.0),
             ("deg", "deg_ce", float(getattr(pl_module, "lambda_degree_importance", 1.0))),
             ("exist", "exist", float(getattr(pl_module, "lambda_node_exist_importance", 1.0))),
+            ("node_count", "node_count_loss", float(getattr(pl_module, "lambda_node_count_importance", 0.0))),
             ("node_label", "node_label_ce", float(getattr(pl_module, "lambda_node_label_importance", 1.0))),
             ("edge_label", "edge_label_ce", float(getattr(pl_module, "lambda_edge_label_importance", 1.0))),
             ("edge", "edge_ce", float(getattr(pl_module, "lambda_locality_importance", 1.0))),
+            ("edge_count", "edge_count_loss", float(getattr(pl_module, "lambda_edge_count_importance", 0.0))),
+            (
+                "deg_edge_consistency",
+                "degree_edge_consistency_loss",
+                float(getattr(pl_module, "lambda_degree_edge_consistency_importance", 0.0)),
+            ),
             ("aux", "aux_locality_ce", float(getattr(pl_module, "lambda_auxiliary_locality_importance", 1.0))),
         ]
 

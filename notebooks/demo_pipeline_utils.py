@@ -109,7 +109,7 @@ def build_graph_generator(
     maximum_epochs=250,
     batch_size=16,
     total_steps=100,
-    early_stopping_monitor="val_eqm",
+    early_stopping_monitor="val_total",
     early_stopping_min_delta=100.0,
     lambda_degree_importance=5e3,
     lambda_node_exist_importance=0,
