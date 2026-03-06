@@ -3,12 +3,12 @@ import networkx as nx
 import pytest
 import pulp
 
-from eqm_decompositional_graph_generator.graph_engine import (
+from equilibrium_matching_decompositional_graph_generator.graph_engine import (
     DEFAULT_DUMMY_NODE_LABEL,
-    EqMDecompositionalGraphDecoder,
-    EqMDecompositionalGraphGenerator,
+    EquilibriumMatchingDecompositionalGraphDecoder,
+    EquilibriumMatchingDecompositionalGraphGenerator,
 )
-from eqm_decompositional_graph_generator.node_engine import EqMDecompositionalNodeGenerator, GeneratedNodeBatch
+from equilibrium_matching_decompositional_graph_generator.node_engine import EquilibriumMatchingDecompositionalNodeGenerator, GeneratedNodeBatch
 
 
 class _GraphVectorizer:
@@ -72,25 +72,25 @@ def _unlabeled_node_graph():
 
 def test_graph_generator_init_validates_inputs():
     with pytest.raises(ValueError, match="locality_sample_fraction"):
-        EqMDecompositionalGraphGenerator(locality_sample_fraction=0.0)
+        EquilibriumMatchingDecompositionalGraphGenerator(locality_sample_fraction=0.0)
     with pytest.raises(ValueError, match="locality_horizon must be >= 1"):
-        EqMDecompositionalGraphGenerator(locality_horizon=0)
+        EquilibriumMatchingDecompositionalGraphGenerator(locality_horizon=0)
     with pytest.raises(ValueError, match="locality_sampling_strategy"):
-        EqMDecompositionalGraphGenerator(locality_sampling_strategy="bad")
+        EquilibriumMatchingDecompositionalGraphGenerator(locality_sampling_strategy="bad")
     with pytest.raises(ValueError, match="locality_target_positive_ratio"):
-        EqMDecompositionalGraphGenerator(locality_target_positive_ratio=1.1)
+        EquilibriumMatchingDecompositionalGraphGenerator(locality_target_positive_ratio=1.1)
     with pytest.raises(ValueError, match="max_feasibility_attempts"):
-        EqMDecompositionalGraphGenerator(max_feasibility_attempts=0)
+        EquilibriumMatchingDecompositionalGraphGenerator(max_feasibility_attempts=0)
     with pytest.raises(ValueError, match="feasibility_candidates_per_attempt"):
-        EqMDecompositionalGraphGenerator(feasibility_candidates_per_attempt=0)
+        EquilibriumMatchingDecompositionalGraphGenerator(feasibility_candidates_per_attempt=0)
     with pytest.raises(ValueError, match="feasibility_failure_mode"):
-        EqMDecompositionalGraphGenerator(feasibility_failure_mode="drop")
+        EquilibriumMatchingDecompositionalGraphGenerator(feasibility_failure_mode="drop")
 
 
 def test_toggle_verbose_updates_nested_components():
     node_model = _Component(verbose=False)
     decoder = _Component(verbose=False)
-    generator = EqMDecompositionalGraphGenerator(
+    generator = EquilibriumMatchingDecompositionalGraphGenerator(
         conditional_node_generator_model=node_model,
         graph_decoder=decoder,
         verbose=False,
@@ -104,7 +104,7 @@ def test_toggle_verbose_updates_nested_components():
 
 
 def test_build_supervision_plan_modes_depend_on_labels_and_horizon():
-    generator = EqMDecompositionalGraphGenerator(locality_horizon=2, verbose=False)
+    generator = EquilibriumMatchingDecompositionalGraphGenerator(locality_horizon=2, verbose=False)
     node_label_targets = [np.asarray(["C", "C"], dtype=object), np.asarray(["C"], dtype=object)]
     edge_label_targets = np.asarray(["-"], dtype=object)
 
@@ -123,7 +123,7 @@ def test_build_supervision_plan_modes_depend_on_labels_and_horizon():
 
 
 def test_graphs_to_edge_label_targets_disables_channel_if_any_edge_missing_label():
-    generator = EqMDecompositionalGraphGenerator(verbose=False)
+    generator = EquilibriumMatchingDecompositionalGraphGenerator(verbose=False)
     graph = _unlabeled_edge_graph()
 
     edge_targets, edge_pairs = generator.graphs_to_edge_label_targets([graph])
@@ -133,7 +133,7 @@ def test_graphs_to_edge_label_targets_disables_channel_if_any_edge_missing_label
 
 
 def test_graphs_to_edge_label_targets_returns_ordered_pairs_for_labeled_edges():
-    generator = EqMDecompositionalGraphGenerator(verbose=False)
+    generator = EquilibriumMatchingDecompositionalGraphGenerator(verbose=False)
     graph = _labeled_graph()
 
     edge_targets, edge_pairs = generator.graphs_to_edge_label_targets([graph])
@@ -146,7 +146,7 @@ def test_graphs_to_edge_label_targets_returns_ordered_pairs_for_labeled_edges():
 
 
 def test_graphs_to_node_label_targets_uses_dummy_label_when_all_nodes_are_unlabelled():
-    generator = EqMDecompositionalGraphGenerator(verbose=False)
+    generator = EquilibriumMatchingDecompositionalGraphGenerator(verbose=False)
 
     node_targets = generator.graphs_to_node_label_targets([_unlabeled_node_graph()])
 
@@ -155,7 +155,7 @@ def test_graphs_to_node_label_targets_uses_dummy_label_when_all_nodes_are_unlabe
 
 
 def test_graphs_to_node_label_targets_rejects_mixed_labelled_and_unlabelled_nodes():
-    generator = EqMDecompositionalGraphGenerator(verbose=False)
+    generator = EquilibriumMatchingDecompositionalGraphGenerator(verbose=False)
     graph = _labeled_graph()
     del graph.nodes[1]["label"]
 
@@ -164,7 +164,7 @@ def test_graphs_to_node_label_targets_rejects_mixed_labelled_and_unlabelled_node
 
 
 def test_build_supervision_plan_uses_dummy_label_as_constant_when_nodes_are_unlabelled():
-    generator = EqMDecompositionalGraphGenerator(verbose=False)
+    generator = EquilibriumMatchingDecompositionalGraphGenerator(verbose=False)
     node_label_targets = generator.graphs_to_node_label_targets([_unlabeled_node_graph()])
 
     plan = generator._build_supervision_plan(
@@ -178,7 +178,7 @@ def test_build_supervision_plan_uses_dummy_label_as_constant_when_nodes_are_unla
 
 
 def test_decode_node_labels_assigns_dummy_constant_label_for_unlabelled_training_setup():
-    decoder = EqMDecompositionalGraphDecoder(verbose=False)
+    decoder = EquilibriumMatchingDecompositionalGraphDecoder(verbose=False)
     decoder.supervision_plan_ = type(
         "_Plan",
         (),
@@ -202,7 +202,7 @@ def test_decode_node_labels_assigns_dummy_constant_label_for_unlabelled_training
 
 
 def test_decode_adjacency_matrix_does_not_use_node_embedding_shapes():
-    decoder = EqMDecompositionalGraphDecoder(verbose=False)
+    decoder = EquilibriumMatchingDecompositionalGraphDecoder(verbose=False)
 
     generated_nodes = GeneratedNodeBatch(
         node_embeddings_list=[np.zeros((5, 3), dtype=float)],
@@ -242,8 +242,8 @@ def test_parallel_decode_matches_serial_decode():
         np.asarray([[None, "="], ["=", None]], dtype=object),
     ]
 
-    serial_decoder = EqMDecompositionalGraphDecoder(verbose=False, n_jobs=1)
-    parallel_decoder = EqMDecompositionalGraphDecoder(verbose=False, n_jobs=2)
+    serial_decoder = EquilibriumMatchingDecompositionalGraphDecoder(verbose=False, n_jobs=1)
+    parallel_decoder = EquilibriumMatchingDecompositionalGraphDecoder(verbose=False, n_jobs=2)
 
     serial_graphs = serial_decoder.decode(
         generated_nodes,
@@ -264,17 +264,15 @@ def test_parallel_decode_matches_serial_decode():
         assert sorted(serial_graph.edges(data=True)) == sorted(parallel_graph.edges(data=True))
 
 
-def test_edge_importance_aliases_map_to_legacy_attributes():
-    model = EqMDecompositionalNodeGenerator(
+def test_edge_importance_parameters_are_exposed_on_model():
+    model = EquilibriumMatchingDecompositionalNodeGenerator(
         lambda_direct_edge_importance=12.0,
         lambda_auxiliary_edge_importance=7.0,
         verbose=False,
     )
 
     assert model.lambda_direct_edge_importance == 12.0
-    assert model.lambda_locality_importance == 12.0
     assert model.lambda_auxiliary_edge_importance == 7.0
-    assert model.lambda_auxiliary_locality_importance == 7.0
 
 
 def test_encode_paths_return_expected_shapes_and_counts():
@@ -284,7 +282,7 @@ def test_encode_paths_return_expected_shapes_and_counts():
     g2.add_edge(1, 2, label="=")
     graphs = [g1, g2]
 
-    generator = EqMDecompositionalGraphGenerator(
+    generator = EquilibriumMatchingDecompositionalGraphGenerator(
         graph_vectorizer=_GraphVectorizer(),
         node_graph_vectorizer=_NodeVectorizer(),
         verbose=False,
@@ -307,7 +305,7 @@ def test_encode_paths_return_expected_shapes_and_counts():
 def test_build_node_batch_masks_presence_and_degrees():
     graph = _labeled_graph()
     node_embeddings = [np.zeros((2, 3), dtype=float)]
-    generator = EqMDecompositionalGraphGenerator(verbose=False)
+    generator = EquilibriumMatchingDecompositionalGraphGenerator(verbose=False)
 
     batch = generator._build_node_batch(
         graphs=[graph],
@@ -321,7 +319,7 @@ def test_build_node_batch_masks_presence_and_degrees():
 
 
 def test_optimize_adjacency_matrix_raises_when_solver_status_is_not_optimal(monkeypatch):
-    decoder = EqMDecompositionalGraphDecoder(verbose=False)
+    decoder = EquilibriumMatchingDecompositionalGraphDecoder(verbose=False)
 
     def _fake_solve(self, solver):
         del solver
@@ -338,7 +336,7 @@ def test_optimize_adjacency_matrix_raises_when_solver_status_is_not_optimal(monk
 
 
 def test_optimize_adjacency_matrix_raises_when_variable_value_is_missing(monkeypatch):
-    decoder = EqMDecompositionalGraphDecoder(verbose=False)
+    decoder = EquilibriumMatchingDecompositionalGraphDecoder(verbose=False)
 
     def _fake_solve(self, solver):
         del solver

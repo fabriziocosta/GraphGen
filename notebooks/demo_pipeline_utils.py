@@ -28,16 +28,16 @@ try:
 except ModuleNotFoundError:
     from nsppk import NSPPK, NodeNSPPK
 
-from eqm_decompositional_graph_generator.node_engine import EqMDecompositionalNodeGenerator
-from eqm_decompositional_graph_generator.graph_engine import (
-    EqMDecompositionalGraphDecoder,
-    EqMDecompositionalGraphGenerator,
+from equilibrium_matching_decompositional_graph_generator.node_engine import EquilibriumMatchingDecompositionalNodeGenerator
+from equilibrium_matching_decompositional_graph_generator.graph_engine import (
+    EquilibriumMatchingDecompositionalGraphDecoder,
+    EquilibriumMatchingDecompositionalGraphGenerator,
 )
 
 
 def build_dataset(dataset_type, dataset_size=50, size=5, assay_id="651610"):
     if dataset_type == "ARTIFICIAL":
-        from eqm_decompositional_graph_generator.support import ArtificialGraphDatasetConstructor
+        from equilibrium_matching_decompositional_graph_generator.support import ArtificialGraphDatasetConstructor
         try:
             from notebooks.notebook_utils import offset_neg_graphs, plot_networkx_graphs, select_pos_neg
         except ModuleNotFoundError:
@@ -151,15 +151,13 @@ def build_graph_generator(
     lambda_node_count_importance=0.0,
     lambda_node_label_importance=5e4,
     lambda_edge_label_importance=5e3,
-    lambda_locality_importance=1e4,
     lambda_direct_edge_importance=1e4,
     lambda_edge_count_importance=0.0,
     lambda_degree_edge_consistency_importance=0.0,
-    lambda_auxiliary_locality_importance=1.0,
     lambda_auxiliary_edge_importance=1.0,
     degree_temperature=1,
     pool_condition_tokens=False,
-    eqm_sigma=0.2,
+    equilibrium_matching_sigma=0.2,
     sampling_step_size=0.05,
     sampling_steps=None,
     langevin_noise_scale=0.0,
@@ -238,7 +236,7 @@ def build_graph_generator(
         [feasibility_size, feasibility_valence, feasibility_cycle, feasibility_unlabeled_structure]
     )
 
-    conditional_node_generator_model = EqMDecompositionalNodeGenerator(
+    conditional_node_generator_model = EquilibriumMatchingDecompositionalNodeGenerator(
         latent_embedding_dimension=latent_embedding_dimension,
         number_of_transformer_layers=number_of_transformer_layers,
         transformer_attention_head_count=transformer_attention_head_count,
@@ -257,7 +255,7 @@ def build_graph_generator(
         lambda_degree_edge_consistency_importance=lambda_degree_edge_consistency_importance,
         lambda_auxiliary_edge_importance=lambda_auxiliary_edge_importance,
         degree_temperature=degree_temperature,
-        eqm_sigma=eqm_sigma,
+        equilibrium_matching_sigma=equilibrium_matching_sigma,
         sampling_step_size=sampling_step_size,
         langevin_noise_scale=langevin_noise_scale,
         verbose=verbose,
@@ -274,14 +272,12 @@ def build_graph_generator(
         cfg_null_target_strategy=cfg_null_target_strategy,
         target_classification_max_distinct=target_classification_max_distinct,
         default_exist_pos_weight=default_exist_pos_weight,
-        lambda_locality_importance=lambda_locality_importance,
         artifact_root_dir=str(artifact_root) if artifact_root is not None else None,
         checkpoint_root_dir=str(checkpoint_root) if checkpoint_root is not None else None,
-        lambda_auxiliary_locality_importance=lambda_auxiliary_locality_importance,
         pool_condition_tokens=pool_condition_tokens,
         sampling_steps=sampling_steps,
     )
-    graph_decoder = EqMDecompositionalGraphDecoder(
+    graph_decoder = EquilibriumMatchingDecompositionalGraphDecoder(
         verbose=verbose,
         existence_threshold=decoder_existence_threshold,
         enforce_connectivity=decoder_enforce_connectivity,
@@ -289,7 +285,7 @@ def build_graph_generator(
         warm_start_mst=decoder_warm_start_mst,
         n_jobs=decoder_n_jobs,
     )
-    return EqMDecompositionalGraphGenerator(
+    return EquilibriumMatchingDecompositionalGraphGenerator(
         graph_vectorizer=graph_vectorizer,
         node_graph_vectorizer=node_graph_vectorizer,
         conditional_node_generator_model=conditional_node_generator_model,

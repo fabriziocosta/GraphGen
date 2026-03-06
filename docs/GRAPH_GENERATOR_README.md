@@ -1,17 +1,17 @@
 # Graph Generator Architecture
 
-This document explains the architecture of `EqMDecompositionalGraphGenerator`, the component that turns graphs into training supervision, coordinates the conditional node generator, and reconstructs final `networkx` graphs through the decoder.
+This document explains the architecture of `EquilibriumMatchingDecompositionalGraphGenerator`, the component that turns graphs into training supervision, coordinates the conditional node generator, and reconstructs final `networkx` graphs through the decoder.
 
 Implementation anchors:
 
-- [`../eqm_decompositional_graph_generator/graph_engine.py`](../eqm_decompositional_graph_generator/graph_engine.py)
-- [`../eqm_decompositional_graph_generator/node_engine.py`](../eqm_decompositional_graph_generator/node_engine.py)
+- [`../equilibrium_matching_decompositional_graph_generator/graph_engine.py`](../equilibrium_matching_decompositional_graph_generator/graph_engine.py)
+- [`../equilibrium_matching_decompositional_graph_generator/node_engine.py`](../equilibrium_matching_decompositional_graph_generator/node_engine.py)
 - [`DECODER_README.md`](DECODER_README.md)
-- [`EqM_README.md`](EqM_README.md)
+- [`EquilibriumMatching_README.md`](EquilibriumMatching_README.md)
 
 ## Scope
 
-The graph generator is the orchestration layer above the EqM node model.
+The graph generator is the orchestration layer above the Equilibrium Matching node model.
 
 It is responsible for:
 
@@ -48,7 +48,7 @@ Those matrices are the training targets for the conditional node generator. Duri
 
 ### 3. Conditional Node Generator
 
-`conditional_node_generator_model` is usually `EqMDecompositionalNodeGenerator`.
+`conditional_node_generator_model` is usually `EquilibriumMatchingDecompositionalNodeGenerator`.
 
 It receives:
 
@@ -65,7 +65,7 @@ It predicts:
 - optional edge probabilities,
 - optional edge labels.
 
-The internal EqM mechanics are described in [`EqM_README.md`](EqM_README.md).
+The internal Equilibrium Matching mechanics are described in [`EquilibriumMatching_README.md`](EquilibriumMatching_README.md).
 
 ### 4. Graph Decoder
 
@@ -139,7 +139,7 @@ The current architecture keeps both because the generation process is allowed to
 
 ## Training Architecture
 
-The `fit()` path in `EqMDecompositionalGraphGenerator` follows a clear sequence.
+The `fit()` path in `EquilibriumMatchingDecompositionalGraphGenerator` follows a clear sequence.
 
 ### Step 1. Fit External Encoders
 
@@ -387,7 +387,7 @@ The main tradeoffs are also clear.
 
 ### Tight Coupling Between Orchestrator And Training Semantics
 
-`EqMDecompositionalGraphGenerator` still knows a lot about:
+`EquilibriumMatchingDecompositionalGraphGenerator` still knows a lot about:
 
 - label semantics,
 - locality supervision policy,
@@ -419,7 +419,7 @@ The system inherits the inductive biases of:
 - `graph_vectorizer`
 - `node_graph_vectorizer`
 
-If those embeddings are weak or unstable, the downstream EqM model and decoder cannot fully compensate.
+If those embeddings are weak or unstable, the downstream Equilibrium Matching model and decoder cannot fully compensate.
 
 ## Extension Points
 
@@ -435,7 +435,7 @@ You can replace `node_graph_vectorizer` as long as it produces per-graph node em
 
 ### Swap The Conditional Node Generator
 
-Any model implementing the `ConditionalNodeGeneratorBase` interface can replace the EqM model if it supports:
+Any model implementing the `ConditionalNodeGeneratorBase` interface can replace the Equilibrium Matching model if it supports:
 
 - `setup(...)`
 - `fit(...)`
@@ -457,7 +457,7 @@ For someone new to the codebase, the fastest way to build accurate context is:
 
 1. [`../README.md`](../README.md)
 2. this file
-3. [`EqM_README.md`](EqM_README.md)
+3. [`EquilibriumMatching_README.md`](EquilibriumMatching_README.md)
 4. [`DECODER_README.md`](DECODER_README.md)
-5. [`../eqm_decompositional_graph_generator/graph_engine.py`](../eqm_decompositional_graph_generator/graph_engine.py)
-6. [`../eqm_decompositional_graph_generator/node_engine.py`](../eqm_decompositional_graph_generator/node_engine.py)
+5. [`../equilibrium_matching_decompositional_graph_generator/graph_engine.py`](../equilibrium_matching_decompositional_graph_generator/graph_engine.py)
+6. [`../equilibrium_matching_decompositional_graph_generator/node_engine.py`](../equilibrium_matching_decompositional_graph_generator/node_engine.py)

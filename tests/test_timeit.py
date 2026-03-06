@@ -1,7 +1,7 @@
 import re
 import time
 
-from eqm_decompositional_graph_generator.support import _verbosity_level, timeit
+from equilibrium_matching_decompositional_graph_generator.support import _verbosity_level, timeit
 
 
 class _Worker:

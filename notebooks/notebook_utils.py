@@ -206,8 +206,8 @@ def graph_label_histogram(graph, label_classes):
 
 
 def summarize_label_histogram_alignment(graph_generator, graphs, n_compare=16):
-    eqm_generator = graph_generator.conditional_node_generator_model
-    label_classes = [int(label) if isinstance(label, np.integer) else label for label in eqm_generator.node_label_classes_]
+    equilibrium_matching_generator = graph_generator.conditional_node_generator_model
+    label_classes = [int(label) if isinstance(label, np.integer) else label for label in equilibrium_matching_generator.node_label_classes_]
 
     input_graphs = graphs[:n_compare]
     graph_conditioning = graph_generator.graph_encode(input_graphs)

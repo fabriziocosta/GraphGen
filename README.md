@@ -3,7 +3,7 @@
 GraphGen is a Python toolkit for conditional graph generation with decompositional encoding/decoding and equilibrium-style node updates.
 
 Technical documentation lives under [`docs/`](docs/):
-- [`docs/EqM_README.md`](docs/EqM_README.md): EqM node-generator internals and training/sampling behavior.
+- [`docs/EquilibriumMatching_README.md`](docs/EquilibriumMatching_README.md): Equilibrium Matching node-generator internals and training/sampling behavior.
 - [`docs/GRAPH_GENERATOR_README.md`](docs/GRAPH_GENERATOR_README.md): graph-generator orchestration architecture.
 - [`docs/DECODER_README.md`](docs/DECODER_README.md): decoder and constraint-solver details.
 - [`docs/PREFERENCES.md`](docs/PREFERENCES.md): local documentation and notebook conventions.
@@ -16,9 +16,9 @@ The repository includes:
 
 ## Project Layout
 
-- `eqm_decompositional_graph_generator/`
+- `equilibrium_matching_decompositional_graph_generator/`
   Core package:
-  - `node_engine.py`: EqM node model, batch dataclasses, and shared NN/callback blocks.
+  - `node_engine.py`: Equilibrium Matching node model, batch dataclasses, and shared NN/callback blocks.
   - `graph_engine.py`: graph generator/decoder orchestration and interpolation helpers.
   - `support.py`: runtime decorators/helpers plus artificial graph dataset constructors.
 - `notebooks/`
@@ -26,7 +26,7 @@ The repository includes:
 - `tests/`
   Pytest suite for generator behavior and helper modules.
 - `docs/`
-  Architecture notes, decoder details, EqM internals, and local development preferences.
+  Architecture notes, decoder details, Equilibrium Matching internals, and local development preferences.
 - `.artifacts/`
   Local artifacts (checkpoints/models); ignored by git.
 
@@ -46,18 +46,18 @@ pip install "numpy<2" torch pytorch-lightning scipy pandas scikit-learn networkx
 ## Quick Start
 
 ```python
-from eqm_decompositional_graph_generator import (
-    EqMDecompositionalNodeGenerator,
-    EqMDecompositionalGraphDecoder,
-    EqMDecompositionalGraphGenerator,
+from equilibrium_matching_decompositional_graph_generator import (
+    EquilibriumMatchingDecompositionalNodeGenerator,
+    EquilibriumMatchingDecompositionalGraphDecoder,
+    EquilibriumMatchingDecompositionalGraphGenerator,
 )
 ```
 
 Typical high-level workflow:
 1. Prepare graphs (`networkx.Graph`) with node/edge labels as needed.
 2. Build vectorizers for graph-level and node-level embeddings.
-3. Instantiate `EqMDecompositionalNodeGenerator`.
-4. Wrap it in `EqMDecompositionalGraphGenerator` (optionally with a decoder).
+3. Instantiate `EquilibriumMatchingDecompositionalNodeGenerator`.
+4. Wrap it in `EquilibriumMatchingDecompositionalGraphGenerator` (optionally with a decoder).
 5. Train with `.fit(...)`.
 6. Generate with `.sample(...)` or `.sample_conditioned_on_random(...)`.
 

@@ -1,11 +1,11 @@
 # Graph Decoder And Constraint Solver
 
-This document explains the decoder used by `EqMDecompositionalGraphGenerator`, with a focus on how graph structure is reconstructed from node-generator outputs and how the constraint solver turns soft edge scores into valid adjacency matrices.
+This document explains the decoder used by `EquilibriumMatchingDecompositionalGraphGenerator`, with a focus on how graph structure is reconstructed from node-generator outputs and how the constraint solver turns soft edge scores into valid adjacency matrices.
 
-The implementation lives in [`../eqm_decompositional_graph_generator/graph_engine.py`](../eqm_decompositional_graph_generator/graph_engine.py), mainly inside:
+The implementation lives in [`../equilibrium_matching_decompositional_graph_generator/graph_engine.py`](../equilibrium_matching_decompositional_graph_generator/graph_engine.py), mainly inside:
 
-- `EqMDecompositionalGraphDecoder`
-- `EqMDecompositionalGraphGenerator._decode_*`
+- `EquilibriumMatchingDecompositionalGraphDecoder`
+- `EquilibriumMatchingDecompositionalGraphGenerator._decode_*`
 
 ## Scope
 
@@ -25,9 +25,9 @@ It is not a neural decoder in the usual sense. The neural model predicts soft gr
 
 At generation time the overall flow is:
 
-1. `EqMDecompositionalGraphGenerator.decode(...)` receives graph-level conditioning.
+1. `EquilibriumMatchingDecompositionalGraphGenerator.decode(...)` receives graph-level conditioning.
 2. The conditional node generator predicts a `GeneratedNodeBatch`.
-3. `EqMDecompositionalGraphDecoder.decode(...)` reconstructs final `networkx.Graph` objects.
+3. `EquilibriumMatchingDecompositionalGraphDecoder.decode(...)` reconstructs final `networkx.Graph` objects.
 
 The decoder operates on these predicted channels:
 

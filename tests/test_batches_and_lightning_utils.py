@@ -3,15 +3,15 @@ import pytest
 import torch
 import warnings
 
-from eqm_decompositional_graph_generator.node_engine import (
+from equilibrium_matching_decompositional_graph_generator.node_engine import (
     GeneratedNodeBatch,
-    EqMDecompositionalNodeGenerator,
-    EqMDecompositionalNodeGeneratorModule,
+    EquilibriumMatchingDecompositionalNodeGenerator,
+    EquilibriumMatchingDecompositionalNodeGeneratorModule,
     GraphConditioningBatch,
     MetricsLogger,
     NodeGenerationBatch,
 )
-from eqm_decompositional_graph_generator.support import run_trainer_fit
+from equilibrium_matching_decompositional_graph_generator.support import run_trainer_fit
 
 
 def test_graph_conditioning_batch_len():
@@ -103,7 +103,7 @@ def test_run_trainer_fit_suppresses_lightning_worker_warnings():
 def test_build_train_val_subsets_reuses_single_example_for_train_and_val():
     dataset = torch.utils.data.TensorDataset(torch.tensor([[1.0]], dtype=torch.float32))
 
-    train_dataset, val_dataset = EqMDecompositionalNodeGenerator._build_train_val_subsets(dataset)
+    train_dataset, val_dataset = EquilibriumMatchingDecompositionalNodeGenerator._build_train_val_subsets(dataset)
 
     assert len(train_dataset) == 1
     assert len(val_dataset) == 1
@@ -116,7 +116,7 @@ def test_build_train_val_subsets_keeps_both_sides_non_empty_for_two_examples():
         torch.tensor([[1.0], [2.0]], dtype=torch.float32)
     )
 
-    train_dataset, val_dataset = EqMDecompositionalNodeGenerator._build_train_val_subsets(dataset)
+    train_dataset, val_dataset = EquilibriumMatchingDecompositionalNodeGenerator._build_train_val_subsets(dataset)
 
     assert len(train_dataset) == 1
     assert len(val_dataset) == 1
@@ -126,21 +126,21 @@ def test_build_train_val_subsets_rejects_empty_dataset():
     dataset = torch.utils.data.TensorDataset(torch.empty((0, 1), dtype=torch.float32))
 
     with pytest.raises(ValueError, match="must contain at least one example"):
-        EqMDecompositionalNodeGenerator._build_train_val_subsets(dataset)
+        EquilibriumMatchingDecompositionalNodeGenerator._build_train_val_subsets(dataset)
 
 
 def test_update_ema_metric_tracks_smoothed_validation_signal():
     trainer = type("_Trainer", (), {"callback_metrics": {}, "logged_metrics": {}})()
     pl_module = type("_Module", (), {"_ema_metrics": {}, "early_stopping_ema_alpha": 0.25})()
 
-    first = MetricsLogger._update_ema_metric(trainer, pl_module, "val_eqm", 100.0)
-    second = MetricsLogger._update_ema_metric(trainer, pl_module, "val_eqm", 60.0)
+    first = MetricsLogger._update_ema_metric(trainer, pl_module, "val_equilibrium_matching", 100.0)
+    second = MetricsLogger._update_ema_metric(trainer, pl_module, "val_equilibrium_matching", 60.0)
 
     assert first == pytest.approx(100.0)
     assert second == pytest.approx(90.0)
-    assert pl_module._ema_metrics["val_eqm"] == pytest.approx(90.0)
-    assert trainer.callback_metrics["val_eqm_ema"].item() == pytest.approx(90.0)
-    assert trainer.logged_metrics["val_eqm_ema"].item() == pytest.approx(90.0)
+    assert pl_module._ema_metrics["val_equilibrium_matching"] == pytest.approx(90.0)
+    assert trainer.callback_metrics["val_equilibrium_matching_ema"].item() == pytest.approx(90.0)
+    assert trainer.logged_metrics["val_equilibrium_matching_ema"].item() == pytest.approx(90.0)
 
 
 def test_compute_edge_count_loss_matches_target_on_consistent_probabilities():
@@ -151,7 +151,7 @@ def test_compute_edge_count_loss_matches_target_on_consistent_probabilities():
     node_presence_mask = torch.tensor([[True, True]])
     target_edge_counts = torch.tensor([1.0], dtype=torch.float32)
 
-    loss = EqMDecompositionalNodeGeneratorModule._compute_edge_count_loss(
+    loss = EquilibriumMatchingDecompositionalNodeGeneratorModule._compute_edge_count_loss(
         edge_probs=edge_probs,
         node_presence_mask=node_presence_mask,
         target_edge_counts=target_edge_counts,
@@ -168,7 +168,7 @@ def test_compute_degree_edge_consistency_loss_is_zero_when_handshake_identity_ma
     node_presence_mask = torch.tensor([[True, True]])
     target_edge_counts = torch.tensor([1.0], dtype=torch.float32)
 
-    loss = EqMDecompositionalNodeGeneratorModule(
+    loss = EquilibriumMatchingDecompositionalNodeGeneratorModule(
         number_of_rows_per_example=2,
         input_feature_dimension=2,
         condition_feature_dimension=3,
@@ -192,7 +192,7 @@ def test_compute_node_count_loss_is_zero_when_expected_count_matches():
     )
     target_node_counts = torch.tensor([2.0], dtype=torch.float32)
 
-    loss = EqMDecompositionalNodeGeneratorModule._compute_node_count_loss(
+    loss = EquilibriumMatchingDecompositionalNodeGeneratorModule._compute_node_count_loss(
         logits_exist=logits_exist,
         target_node_counts=target_node_counts,
     )
