@@ -113,10 +113,30 @@ def test_graph_generator_decode_passes_cfg_args_to_predict():
         graph_decoder=_DecoderStub(),
         verbose=False,
     )
+    generator.is_fitted_ = True
     conditioning = generator.graph_encode([_graph()])
     generator.decode(conditioning, desired_target=1, guidance_scale=2.5)
     assert cond.last_predict_kwargs["desired_target"] == 1
     assert cond.last_predict_kwargs["guidance_scale"] == 2.5
+
+
+def test_graph_generator_decode_requires_fit():
+    generator = EqMDecompositionalGraphGenerator(
+        graph_vectorizer=_GraphVectorizer(),
+        node_graph_vectorizer=_NodeVectorizer(),
+        conditional_node_generator_model=_ConditionalStub(),
+        graph_decoder=_DecoderStub(),
+        verbose=False,
+    )
+
+    with pytest.raises(RuntimeError, match="is not fitted"):
+        generator.decode(
+            GraphConditioningBatch(
+                graph_embeddings=np.zeros((1, 2), dtype=float),
+                node_counts=np.ones((1,), dtype=np.int64),
+                edge_counts=np.zeros((1,), dtype=np.int64),
+            )
+        )
 
 
 def test_node_generator_target_mode_inference_classification_vs_regression():
@@ -223,4 +243,17 @@ def test_predict_rejects_negative_guidance_scale():
                 edge_counts=np.zeros((1,), dtype=np.int64),
             ),
             guidance_scale=-1.0,
+        )
+
+
+def test_node_generator_predict_requires_setup_or_fit():
+    generator = EqMDecompositionalNodeGenerator()
+
+    with pytest.raises(RuntimeError, match="Call setup\\(\\) or fit\\(\\) before predict\\(\\)"):
+        generator.predict(
+            graph_conditioning=GraphConditioningBatch(
+                graph_embeddings=np.zeros((1, 2), dtype=float),
+                node_counts=np.ones((1,), dtype=np.int64),
+                edge_counts=np.zeros((1,), dtype=np.int64),
+            ),
         )

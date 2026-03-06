@@ -11,7 +11,6 @@ class GraphConditioningBatch:
     graph_embeddings: np.ndarray
     node_counts: np.ndarray
     edge_counts: np.ndarray
-    node_label_histograms: Optional[np.ndarray] = None
 
     def __len__(self) -> int:
         return int(len(self.graph_embeddings))
@@ -191,24 +190,51 @@ def plot_metrics(
     window: int = 10,
     alpha: float = 0.3,
 ) -> None:
-    """Visualise train/validation metrics with a geometric moving average.
+    """Visualise train/validation metrics with LOESS-smoothed overlays.
 
     Args:
         train_metrics (Dict[str, Sequence[float]]): Input value.
         val_metrics (Dict[str, Sequence[float]]): Input value.
-        window (int): Optional input value.
+        window (int): Optional input value used to derive the LOESS span.
         alpha (float): Optional input value.
     """
 
-    def _moving_average(data: Sequence[float], window_size: int) -> np.ndarray:
+    def _loess_smooth(data: Sequence[float], window_size: int) -> np.ndarray:
         arr = np.asarray(data, dtype=float)
-        if len(arr) < window_size:
-            return np.array([])
-        arr_clamped = np.where(arr <= 0, np.finfo(float).tiny, arr)
-        log_arr = np.log(arr_clamped)
-        kernel = np.ones(window_size, dtype=float) / window_size
-        smoothed_log = np.convolve(log_arr, kernel, mode="valid")
-        return np.exp(smoothed_log)
+        n = arr.size
+        if n < 3:
+            return arr.copy()
+
+        use_log_domain = bool(np.all(arr > 0))
+        working = np.log(arr) if use_log_domain else arr.copy()
+        x = np.arange(n, dtype=float)
+        span = max(3, min(n, int(round(window_size))))
+        smoothed = np.empty(n, dtype=float)
+
+        for idx in range(n):
+            distances = np.abs(x - x[idx])
+            nearest = np.argpartition(distances, span - 1)[:span]
+            local_x = x[nearest]
+            local_y = working[nearest]
+
+            max_distance = float(np.max(np.abs(local_x - x[idx])))
+            if max_distance <= 0.0:
+                smoothed[idx] = working[idx]
+                continue
+
+            u = np.abs(local_x - x[idx]) / max_distance
+            weights = np.power(1.0 - np.power(np.clip(u, 0.0, 1.0), 3.0), 3.0)
+            X = np.column_stack([np.ones_like(local_x), local_x - x[idx]])
+            weighted_design = X * weights[:, None]
+            xtwx = X.T @ weighted_design
+            xtwy = weighted_design.T @ local_y
+            try:
+                beta = np.linalg.solve(xtwx, xtwy)
+                smoothed[idx] = beta[0]
+            except np.linalg.LinAlgError:
+                smoothed[idx] = np.average(local_y, weights=weights)
+
+        return np.exp(smoothed) if use_log_domain else smoothed
 
     metrics = [
         name
@@ -218,44 +244,61 @@ def plot_metrics(
     if not metrics:
         return
 
-    fig, ax0 = plt.subplots(figsize=(15, 8))
-    axes = [ax0] + [ax0.twinx() for _ in range(len(metrics) - 1)]
-    for i, ax in enumerate(axes[1:], start=1):
-        ax.spines["right"].set_position(("outward", 56 * i))
-        ax.yaxis.set_label_position("right")
-        ax.yaxis.tick_right()
-        ax.patch.set_visible(False)
-
     color_cycle = plt.rcParams.get("axes.prop_cycle", None)
     default_colors = color_cycle.by_key()["color"] if color_cycle is not None else ["blue", "red", "green", "purple", "orange"]
-    colors = [default_colors[i % len(default_colors)] for i in range(len(metrics))]
-    lines, labels = [], []
-    for name, ax, color in zip(metrics, axes, colors):
-        train_vals = train_metrics[name]
-        val_vals = val_metrics[name]
-        count = min(len(train_vals), len(val_vals))
-        train = train_vals[:count]
-        val = val_vals[:count]
-        epochs = np.arange(1, count + 1)
-        ax.plot(epochs, train, color=color, alpha=alpha)
-        ax.plot(epochs, val, color=color, linestyle="--", alpha=alpha)
-        sm_train = _moving_average(train, window)
-        sm_val = _moving_average(val, window)
-        if sm_train.size:
-            sm_epochs = np.arange(window, window + len(sm_train))
-            line_train, = ax.plot(sm_epochs, sm_train, color=color, linewidth=2, label=f"Train {name} (MA{window})")
-            line_val, = ax.plot(sm_epochs, sm_val, color=color, linewidth=2, linestyle="--", label=f"Val {name} (MA{window})")
-            lines += [line_train, line_val]
-            labels += [f"Train {name} (MA{window})", f"Val {name} (MA{window})"]
-        ax.set_ylabel(name, color=color)
-        ax.tick_params(axis="y", labelcolor=color)
-        ax.set_yscale("log")
+    panel_specs = [
+        ("Structural Losses", ["total", "eqm", "deg_ce", "exist"]),
+        ("Semantic And Pairwise Losses", ["node_label_ce", "edge_label_ce", "edge_ce", "aux_locality"]),
+    ]
+    active_panels = [
+        (title, [name for name in panel_metrics if name in metrics])
+        for title, panel_metrics in panel_specs
+    ]
+    active_panels = [(title, panel_metrics) for title, panel_metrics in active_panels if panel_metrics]
+    if not active_panels:
+        active_panels = [("Metrics", metrics)]
 
-    fig.legend(lines, labels, loc="upper center", ncol=max(len(lines) // 2, 1), fontsize="small")
-    ax0.set_xlabel("Epoch")
-    ax0.grid(True, which="both", linestyle="--", linewidth=0.5)
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.90)
+    fig_height = 4.2 * len(active_panels) + 1.2
+    fig, axes = plt.subplots(
+        len(active_panels),
+        1,
+        figsize=(14, fig_height),
+        sharex=True,
+        squeeze=False,
+    )
+    flat_axes = axes[:, 0]
+    color_by_metric = {
+        metric_name: default_colors[idx % len(default_colors)]
+        for idx, metric_name in enumerate(metrics)
+    }
+    lines, labels = [], []
+
+    for ax, (panel_title, panel_metrics) in zip(flat_axes, active_panels):
+        for name in panel_metrics:
+            color = color_by_metric[name]
+            train_vals = train_metrics[name]
+            val_vals = val_metrics[name]
+            count = min(len(train_vals), len(val_vals))
+            train = train_vals[:count]
+            val = val_vals[:count]
+            epochs = np.arange(1, count + 1)
+            ax.plot(epochs, train, color=color, alpha=alpha, linewidth=1.0)
+            ax.plot(epochs, val, color=color, linestyle="--", alpha=alpha, linewidth=1.0)
+            sm_train = _loess_smooth(train, window)
+            sm_val = _loess_smooth(val, window)
+            line_train, = ax.plot(epochs, sm_train, color=color, linewidth=2.2, label=f"Train {name} (LOESS)")
+            line_val, = ax.plot(epochs, sm_val, color=color, linewidth=2.2, linestyle="--", label=f"Val {name} (LOESS)")
+            lines += [line_train, line_val]
+            labels += [f"Train {name} (LOESS)", f"Val {name} (LOESS)"]
+
+        ax.set_title(panel_title)
+        ax.set_yscale("log")
+        ax.grid(True, which="both", linestyle="--", linewidth=0.5)
+        ax.set_ylabel("Loss")
+
+    flat_axes[-1].set_xlabel("Epoch")
+    fig.legend(lines, labels, loc="upper center", ncol=max(min(len(lines), 6), 1), fontsize="small")
+    fig.subplots_adjust(left=0.08, right=0.98, top=0.90, hspace=0.28)
     plt.show()
 
 
@@ -287,6 +330,7 @@ class MetricsLogger(pl.callbacks.Callback):
 
     def on_fit_start(self, trainer, pl_module):
         pl_module._fit_start_time = time.time()
+        pl_module._ema_metrics = {}
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
@@ -340,6 +384,21 @@ class MetricsLogger(pl.callbacks.Callback):
         ]
         return raw_total, normalized_components, dominant_label, dominant_weighted / denominator
 
+    @staticmethod
+    def _update_ema_metric(trainer, pl_module, metric_name: str, metric_value: float) -> float:
+        alpha = float(getattr(pl_module, "early_stopping_ema_alpha", 0.3))
+        if not 0.0 < alpha <= 1.0:
+            alpha = 0.3
+        previous = pl_module._ema_metrics.get(metric_name)
+        ema_value = metric_value if previous is None else alpha * metric_value + (1.0 - alpha) * previous
+        pl_module._ema_metrics[metric_name] = float(ema_value)
+        ema_key = f"{metric_name}_ema"
+        ema_tensor = torch.tensor(float(ema_value), dtype=torch.float32)
+        trainer.callback_metrics[ema_key] = ema_tensor
+        if hasattr(trainer, "logged_metrics") and isinstance(trainer.logged_metrics, dict):
+            trainer.logged_metrics[ema_key] = ema_tensor
+        return float(ema_value)
+
     def on_train_epoch_end(self, trainer, pl_module):
         m = trainer.callback_metrics
         pl_module.train_losses.append(m.get("train_total", torch.tensor(0.0)).item())
@@ -379,6 +438,8 @@ class MetricsLogger(pl.callbacks.Callback):
         if getattr(pl_module, "use_auxiliary_locality_supervision", False):
             pl_module.val_aux_edge_loss.append(m.get("val_aux_locality_ce", m.get("val_aux_edge_loss", torch.tensor(0.0))).item())
             pl_module.val_aux_edge_acc.append(m.get("val_aux_edge_acc", torch.tensor(0.0)).item())
+        self._update_ema_metric(trainer, pl_module, "val_total", pl_module.val_losses[-1])
+        self._update_ema_metric(trainer, pl_module, "val_eqm", pl_module.val_recon[-1])
 
         verbose_level = 0
         try:
@@ -459,7 +520,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from sklearn.preprocessing import MinMaxScaler
-from torch.utils.data import DataLoader, Dataset, TensorDataset, random_split
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from .support import run_trainer_fit
 
@@ -647,10 +708,11 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         verbose: bool = False,
         verbose_epoch_interval: int = 10,
         enable_early_stopping: bool = True,
-        early_stopping_monitor: str = "val_eqm",
+        early_stopping_monitor: str = "val_eqm_ema",
         early_stopping_mode: str = "min",
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
+        early_stopping_ema_alpha: float = 0.3,
         restore_best_checkpoint: bool = True,
         artifact_root_dir: Optional[str] = None,
         checkpoint_root_dir: Optional[str] = None,
@@ -704,6 +766,10 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
             raise ValueError(
                 f"cfg_null_target_strategy must be one of ['zero'] (got {cfg_null_target_strategy!r})."
             )
+        if not 0.0 < early_stopping_ema_alpha <= 1.0:
+            raise ValueError(
+                f"early_stopping_ema_alpha must be in (0, 1] (got {early_stopping_ema_alpha})."
+            )
 
         self.number_of_rows_per_example = number_of_rows_per_example
         self.input_feature_dimension = input_feature_dimension
@@ -720,6 +786,7 @@ class EqMDecompositionalNodeGeneratorModule(pl.LightningModule):
         self.early_stopping_mode = str(early_stopping_mode)
         self.early_stopping_patience = int(early_stopping_patience)
         self.early_stopping_min_delta = float(early_stopping_min_delta)
+        self.early_stopping_ema_alpha = float(early_stopping_ema_alpha)
         self.restore_best_checkpoint = bool(restore_best_checkpoint)
         if artifact_root_dir is None:
             repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1426,10 +1493,11 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         verbose: bool = False,
         verbose_epoch_interval: int = 10,
         enable_early_stopping: bool = True,
-        early_stopping_monitor: str = "val_eqm",
+        early_stopping_monitor: str = "val_eqm_ema",
         early_stopping_mode: str = "min",
         early_stopping_patience: int = 30,
         early_stopping_min_delta: float = 0.0,
+        early_stopping_ema_alpha: float = 0.3,
         restore_best_checkpoint: bool = True,
         artifact_root_dir: Optional[str] = None,
         checkpoint_root_dir: Optional[str] = None,
@@ -1447,7 +1515,6 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         sampling_step_size: float = 0.05,
         sampling_steps: Optional[int] = None,
         langevin_noise_scale: float = 0.0,
-        require_embedded_node_label_histogram: bool = False,
         cfg_condition_dropout_prob: float = 0.1,
         cfg_null_target_strategy: str = "zero",
         target_classification_max_distinct: int = 20,
@@ -1467,6 +1534,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.early_stopping_mode = str(early_stopping_mode)
         self.early_stopping_patience = int(early_stopping_patience)
         self.early_stopping_min_delta = float(early_stopping_min_delta)
+        self.early_stopping_ema_alpha = float(early_stopping_ema_alpha)
         self.restore_best_checkpoint = bool(restore_best_checkpoint)
         if artifact_root_dir is None:
             repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1507,7 +1575,10 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
                 "target_classification_max_distinct must be >= 1 "
                 f"(got {self.target_classification_max_distinct})."
             )
-        self.require_embedded_node_label_histogram = False
+        if not 0.0 < self.early_stopping_ema_alpha <= 1.0:
+            raise ValueError(
+                f"early_stopping_ema_alpha must be in (0, 1] (got {self.early_stopping_ema_alpha})."
+            )
         self.use_existence_head = True
         self.constant_existence_value = 1.0
         self.use_node_label_head = False
@@ -1540,6 +1611,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         self.best_checkpoint_path_ = None
         self.best_checkpoint_score_ = None
         self.best_checkpoint_epoch_ = None
+        self.is_setup_ = False
 
     def _plan_channel(self, channel_name: str):
         """Return the named channel from the orchestration supervision plan when available.
@@ -1671,20 +1743,6 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
                 encoded[graph_idx, node_idx] = self.node_label_to_index_[label]
         return encoded
 
-    def _compute_node_label_histograms(self, encoded_targets: np.ndarray, valid_mask: np.ndarray) -> np.ndarray:
-        histograms = np.zeros((encoded_targets.shape[0], self.node_label_histogram_dimension), dtype=float)
-        if self.node_label_histogram_dimension == 0:
-            return histograms
-        for graph_idx in range(encoded_targets.shape[0]):
-            valid_indices = encoded_targets[graph_idx][valid_mask[graph_idx]]
-            if valid_indices.size == 0:
-                continue
-            counts = np.bincount(valid_indices, minlength=self.node_label_histogram_dimension).astype(float)
-            total = counts.sum()
-            if total > 0:
-                histograms[graph_idx] = counts / total
-        return histograms
-
     def _compose_condition_array(self, graph_conditioning: GraphConditioningBatch) -> np.ndarray:
         """Compose a concrete NN conditioning matrix from explicit semantic fields.
 
@@ -1699,10 +1757,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             graph_embeddings = graph_embeddings[:, None]
         node_counts = np.asarray(graph_conditioning.node_counts, dtype=float).reshape(-1, 1)
         edge_counts = np.asarray(graph_conditioning.edge_counts, dtype=float).reshape(-1, 1)
-        parts = [graph_embeddings, node_counts, edge_counts]
-        if graph_conditioning.node_label_histograms is not None:
-            parts.append(np.asarray(graph_conditioning.node_label_histograms, dtype=float))
-        return np.concatenate(parts, axis=1)
+        return np.concatenate([graph_embeddings, node_counts, edge_counts], axis=1)
 
     def _fit_target_encoder(self, targets: Sequence[Any]) -> None:
         targets_array = np.asarray(targets, dtype=object)
@@ -1787,6 +1842,36 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
         if negative > positive:
             return float(negative) / float(positive)
         return 1.0
+
+    @staticmethod
+    def _build_train_val_subsets(dataset):
+        """Create non-empty train/validation subsets for tiny datasets.
+
+        For a single-example dataset, reuse the same sample for both training and
+        validation so Lightning callbacks that monitor validation metrics still work.
+        """
+        dataset_size = len(dataset)
+        if dataset_size < 1:
+            raise ValueError("Training dataset must contain at least one example.")
+        if dataset_size == 1:
+            single_index = [0]
+            subset = torch.utils.data.Subset(dataset, single_index)
+            return subset, subset
+
+        train_size = int(0.9 * dataset_size)
+        train_size = max(1, min(train_size, dataset_size - 1))
+        indices = torch.randperm(dataset_size).tolist()
+        train_indices = indices[:train_size]
+        val_indices = indices[train_size:]
+        train_dataset = torch.utils.data.Subset(dataset, train_indices)
+        val_dataset = torch.utils.data.Subset(dataset, val_indices)
+        return train_dataset, val_dataset
+
+    def _require_fitted_for_prediction(self) -> None:
+        if self.model is None or self.x_scaler is None or self.y_scaler is None or not self.is_setup_:
+            raise RuntimeError(
+                "EqMDecompositionalNodeGenerator is not fitted. Call setup() or fit() before predict()."
+            )
 
     def setup(
         self,
@@ -2002,6 +2087,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             target_condition_feature_count=self.target_condition_dim_,
             cfg_condition_dropout_prob=self.cfg_condition_dropout_prob,
             cfg_null_target_strategy=self.cfg_null_target_strategy,
+            early_stopping_ema_alpha=self.early_stopping_ema_alpha,
         )
         self.model.use_existence_head = self.use_existence_head
         self.model.constant_existence_value = self.constant_existence_value
@@ -2017,6 +2103,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
                 f"parameters={parameter_count:,}, "
                 f"trainable={trainable_parameter_count:,}."
             )
+        self.is_setup_ = True
 
     def fit(
         self,
@@ -2092,14 +2179,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
                 degree_target_array,
                 encoded_node_label_targets,
             )
-            dataset_size = len(node_encodings_list)
-            train_size = int(0.9 * dataset_size)
-            val_size = dataset_size - train_size
-            indices = torch.randperm(dataset_size).tolist()
-            train_indices = indices[:train_size]
-            val_indices = indices[train_size:]
-            train_dataset = torch.utils.data.Subset(dataset, train_indices)
-            val_dataset = torch.utils.data.Subset(dataset, val_indices)
+            train_dataset, val_dataset = self._build_train_val_subsets(dataset)
             train_loader = DataLoader(
                 train_dataset,
                 batch_size=self.batch_size,
@@ -2118,9 +2198,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             else:
                 label_tensor = torch.tensor(encoded_node_label_targets, dtype=torch.long)
                 dataset = TensorDataset(X_tensor, y_tensor, mask_tensor, degree_tensor, label_tensor)
-            train_size = int(0.9 * len(dataset))
-            val_size = len(dataset) - train_size
-            train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+            train_dataset, val_dataset = self._build_train_val_subsets(dataset)
             train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
             val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
 
@@ -2192,20 +2270,26 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             self.model.to(self.device)
             if int(self.verbose) >= 1:
                 stopped_epoch = int(getattr(trainer, "current_epoch", -1)) + 1
-                epoch_msg = (
-                    f"best_epoch={self.best_checkpoint_epoch_ + 1}, "
-                    if self.best_checkpoint_epoch_ is not None
-                    else ""
-                )
-                score_msg = (
+                raw_best_val_eqm = None
+                if (
+                    self.best_checkpoint_epoch_ is not None
+                    and hasattr(self.model, "val_recon")
+                    and self.best_checkpoint_epoch_ < len(self.model.val_recon)
+                ):
+                    raw_best_val_eqm = float(self.model.val_recon[self.best_checkpoint_epoch_])
+                summary_parts = []
+                if self.best_checkpoint_epoch_ is not None:
+                    summary_parts.append(f"best_epoch={self.best_checkpoint_epoch_ + 1}")
+                summary_parts.append(
                     f"{self.early_stopping_monitor}={self.best_checkpoint_score_:.4f}"
                     if self.best_checkpoint_score_ is not None
                     else f"{self.early_stopping_monitor}=unknown"
                 )
-                print(
-                    f"Restored best checkpoint from {self.best_checkpoint_path_} "
-                    f"({epoch_msg}{score_msg}, stopped_epoch={stopped_epoch})."
-                )
+                if raw_best_val_eqm is not None:
+                    summary_parts.append(f"raw_val_eqm={raw_best_val_eqm:.4f}")
+                summary_parts.append(f"stopped_epoch={stopped_epoch}")
+                print("Restored best checkpoint: " + ", ".join(summary_parts))
+                print(f"  path={self.best_checkpoint_path_}")
 
     def predict(
         self,
@@ -2218,6 +2302,7 @@ class EqMDecompositionalNodeGenerator(ConditionalNodeGeneratorBase):
             raise ValueError(f"guidance_scale must be >= 0 (got {guidance_scale}).")
         if desired_target is None and desired_class is not None:
             desired_target = desired_class
+        self._require_fitted_for_prediction()
 
         self.device = next(self.model.parameters()).device
         base_condition_array = self._compose_condition_array(graph_conditioning)

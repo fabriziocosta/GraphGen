@@ -19,7 +19,6 @@ class _FakeGraphGenerator:
             graph_embeddings=np.asarray([graph["embedding"]], dtype=float),
             node_counts=np.asarray([graph["node_count"]], dtype=np.int64),
             edge_counts=np.asarray([graph["edge_count"]], dtype=np.int64),
-            node_label_histograms=np.asarray([graph["hist"]], dtype=float),
         )
 
     def _decode_with_feasibility_slots(self, conditioning, apply_feasibility_filtering=True):
@@ -50,15 +49,10 @@ class _FakeGraphGenerator:
             ts,
             minimum=0,
         )
-        interpolated_histograms = np.stack(
-            [(1.0 - t) * cond_a.node_label_histograms[0] + t * cond_b.node_label_histograms[0] for t in ts],
-            axis=0,
-        )
         interpolated_conditioning = GraphConditioningBatch(
             graph_embeddings=interpolated_graph_embeddings,
             node_counts=interpolated_node_counts,
             edge_counts=interpolated_edge_counts,
-            node_label_histograms=interpolated_histograms,
         )
         decoded_slots = self._decode_with_feasibility_slots(
             interpolated_conditioning,
@@ -113,13 +107,11 @@ def test_interpolate_returns_conditioning_and_summary():
         "embedding": np.array([1.0, 0.0, 2.0]),
         "node_count": 3,
         "edge_count": 2,
-        "hist": np.array([0.7, 0.3]),
     }
     graph_b = {
         "embedding": np.array([0.0, 2.0, 1.0]),
         "node_count": 5,
         "edge_count": 8,
-        "hist": np.array([0.2, 0.8]),
     }
     gen = _FakeGraphGenerator()
 

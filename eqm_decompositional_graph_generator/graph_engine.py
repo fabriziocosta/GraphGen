@@ -16,6 +16,8 @@ from .node_engine import (
     NodeGenerationBatch,
 )
 
+DEFAULT_DUMMY_NODE_LABEL = "__dummy_node_label__"
+
 
 @dataclass(frozen=True)
 class SupervisionChannelPlan:
@@ -241,11 +243,25 @@ class EqMDecompositionalGraphDecoder(object):
         # Solve
         solver = pulp.PULP_CBC_CMD(timeLimit=timeLimit, msg=verbose)
         prob.solve(solver)
+        status_code = int(getattr(prob, "status", 0))
+        status_label = pulp.LpStatus.get(status_code, f"Unknown({status_code})")
+        if status_code != pulp.LpStatusOptimal:
+            raise RuntimeError(
+                "Adjacency ILP did not produce an optimal solution "
+                f"(status={status_label}, code={status_code}, n={n}, "
+                f"target_degree_sum={int(sum(target_degrees))}, connectivity={bool(connectivity)})."
+            )
 
         # Build adjacency
         adj = np.zeros((n,n), dtype=int)
         for (i,j), var in x.items():
-            adj[i,j] = adj[j,i] = int(pulp.value(var))
+            value = pulp.value(var)
+            if value is None:
+                raise RuntimeError(
+                    "Adjacency ILP finished without assigning all decision variables "
+                    f"(status={status_label}, missing_edge=({i}, {j}))."
+                )
+            adj[i,j] = adj[j,i] = int(round(float(value)))
         return adj
 
     def graphs_to_adjacency_matrices(self, graphs: List[nx.Graph]) -> List[np.ndarray]:
@@ -921,10 +937,8 @@ class EqMDecompositionalGraphGenerator(object):
         self.conditional_node_generator_model = conditional_node_generator_model
         self.graph_decoder = graph_decoder
         self.verbose = verbose
-        self.node_label_classes_ = None
-        self.node_label_to_index_ = None
-        self.node_label_histogram_dimension = 0
         self.supervision_plan_: Optional[SupervisionPlan] = None
+        self.is_fitted_ = False
         if not 0.0 < locality_sample_fraction <= 1.0:
             raise ValueError("locality_sample_fraction must be between 0.0 (exclusive) and 1.0 (inclusive)")
         self.locality_sample_fraction = locality_sample_fraction
@@ -1102,6 +1116,20 @@ class EqMDecompositionalGraphGenerator(object):
         if self.graph_decoder is not None:
             self.graph_decoder.verbose = self.verbose
 
+    def _require_fitted_for_generation(self) -> None:
+        if not self.is_fitted_:
+            raise RuntimeError(
+                "EqMDecompositionalGraphGenerator is not fitted. Call fit() before decode(), sample(), or other generation methods."
+            )
+        if self.conditional_node_generator_model is None:
+            raise RuntimeError(
+                "EqMDecompositionalGraphGenerator cannot generate graphs because conditional_node_generator_model is None."
+            )
+        if self.graph_decoder is None:
+            raise RuntimeError(
+                "EqMDecompositionalGraphGenerator cannot generate graphs because graph_decoder is None."
+            )
+
     @timeit
     def fit(
         self,
@@ -1126,7 +1154,6 @@ class EqMDecompositionalGraphGenerator(object):
             self.feasibility_estimator.fit(graphs)
         node_label_targets = self.graphs_to_node_label_targets(graphs)
         edge_label_targets, edge_label_pairs = self.graphs_to_edge_label_targets(graphs)
-        self._fit_node_label_vocab(node_label_targets)
         supervision_plan = self._build_supervision_plan(
             graphs,
             node_label_targets=node_label_targets,
@@ -1205,6 +1232,7 @@ class EqMDecompositionalGraphGenerator(object):
                 targets=targets,
             )
 
+        self.is_fitted_ = True
         return self
 
     @timeit
@@ -1240,7 +1268,6 @@ class EqMDecompositionalGraphGenerator(object):
             graph_embeddings=graph_embeddings,
             node_counts=node_counts,
             edge_counts=edge_counts,
-            node_label_histograms=None,
         )
 
     def encode(self, graphs: List[nx.Graph]) -> Tuple[List[np.ndarray], GraphConditioningBatch]:
@@ -1263,9 +1290,31 @@ class EqMDecompositionalGraphGenerator(object):
         Returns:
             List[np.ndarray]: Computed result.
         """
+        saw_any_node_label = False
+        saw_missing_node_label = False
         node_label_targets = []
         for graph in graphs:
-            node_label_targets.append(np.asarray([graph.nodes[u]["label"] for u in graph.nodes()], dtype=object))
+            labels = []
+            for node in graph.nodes():
+                label = graph.nodes[node].get("label")
+                if label is None:
+                    saw_missing_node_label = True
+                else:
+                    saw_any_node_label = True
+                labels.append(label)
+            node_label_targets.append(np.asarray(labels, dtype=object))
+
+        if saw_any_node_label and saw_missing_node_label:
+            raise ValueError(
+                "Node labels must be either present for every node in every training graph or absent for all nodes."
+            )
+
+        if not saw_any_node_label:
+            return [
+                np.asarray([DEFAULT_DUMMY_NODE_LABEL] * len(labels), dtype=object)
+                for labels in node_label_targets
+            ]
+
         return node_label_targets
 
     def _graphs_have_usable_edge_labels(self, graphs: List[nx.Graph]) -> bool:
@@ -1304,60 +1353,17 @@ class EqMDecompositionalGraphGenerator(object):
         edge_label_targets = []
         edge_label_pairs = []
         for graph_idx, graph in enumerate(graphs):
-            nodes = list(graph.nodes())
-            for i, u in enumerate(nodes):
-                for j, v in enumerate(nodes):
-                    if graph.has_edge(u, v):
-                        edge_label_pairs.append((graph_idx, i, j))
-                        edge_label_targets.append(graph.edges[u, v]["label"])
+            node_to_index = {node: idx for idx, node in enumerate(graph.nodes())}
+            for u, v, attrs in graph.edges(data=True):
+                i = node_to_index[u]
+                j = node_to_index[v]
+                label = attrs["label"]
+                edge_label_pairs.append((graph_idx, i, j))
+                edge_label_targets.append(label)
+                if not graph.is_directed():
+                    edge_label_pairs.append((graph_idx, j, i))
+                    edge_label_targets.append(label)
         return np.asarray(edge_label_targets, dtype=object), edge_label_pairs
-
-    def _should_use_node_label_histograms(self) -> bool:
-        return False
-
-    def _fit_node_label_vocab(self, node_label_targets: List[np.ndarray]) -> None:
-        if not self._should_use_node_label_histograms():
-            self.node_label_classes_ = None
-            self.node_label_to_index_ = None
-            self.node_label_histogram_dimension = 0
-            return
-        flat_labels = [label for labels in node_label_targets for label in np.asarray(labels, dtype=object).tolist()]
-        if len(flat_labels) == 0:
-            self.node_label_classes_ = np.asarray([], dtype=object)
-            self.node_label_to_index_ = {}
-            self.node_label_histogram_dimension = 0
-            return
-        self.node_label_classes_ = np.unique(np.asarray(flat_labels, dtype=object))
-        self.node_label_to_index_ = {label: idx for idx, label in enumerate(self.node_label_classes_)}
-        self.node_label_histogram_dimension = int(len(self.node_label_classes_))
-
-    def graphs_to_node_label_histograms(self, graphs: List[nx.Graph]) -> Optional[np.ndarray]:
-        """Convert graphs into label histograms using the fitted graph-level label vocabulary.
-
-        Args:
-            graphs (List[nx.Graph]): Input value.
-
-        Returns:
-            Optional[np.ndarray]: Computed result.
-        """
-        if not self._should_use_node_label_histograms():
-            return None
-        if self.node_label_to_index_ is None:
-            return None
-        histograms = []
-        num_classes = self.node_label_histogram_dimension
-        for labels in self.graphs_to_node_label_targets(graphs):
-            hist = np.zeros(num_classes, dtype=float)
-            if labels.size > 0:
-                for label in labels:
-                    class_idx = self.node_label_to_index_.get(label)
-                    if class_idx is not None:
-                        hist[class_idx] += 1.0
-                total = hist.sum()
-                if total > 0:
-                    hist /= total
-            histograms.append(hist)
-        return np.asarray(histograms, dtype=float)
 
     def _build_node_batch(
         self,
@@ -1492,14 +1498,10 @@ class EqMDecompositionalGraphGenerator(object):
             GraphConditioningBatch: Computed result.
         """
         idx = np.asarray(indices, dtype=np.int64)
-        node_label_histograms = None
-        if graph_conditioning.node_label_histograms is not None:
-            node_label_histograms = np.asarray(graph_conditioning.node_label_histograms)[idx]
         return GraphConditioningBatch(
             graph_embeddings=np.asarray(graph_conditioning.graph_embeddings)[idx],
             node_counts=np.asarray(graph_conditioning.node_counts)[idx],
             edge_counts=np.asarray(graph_conditioning.edge_counts)[idx],
-            node_label_histograms=node_label_histograms,
         )
 
     @staticmethod
@@ -1518,13 +1520,6 @@ class EqMDecompositionalGraphGenerator(object):
         """
         if repeats < 1:
             raise ValueError("repeats must be >= 1")
-        node_label_histograms = None
-        if graph_conditioning.node_label_histograms is not None:
-            node_label_histograms = np.repeat(
-                np.asarray(graph_conditioning.node_label_histograms),
-                repeats,
-                axis=0,
-            )
         return GraphConditioningBatch(
             graph_embeddings=np.repeat(
                 np.asarray(graph_conditioning.graph_embeddings),
@@ -1533,7 +1528,6 @@ class EqMDecompositionalGraphGenerator(object):
             ),
             node_counts=np.repeat(np.asarray(graph_conditioning.node_counts), repeats, axis=0),
             edge_counts=np.repeat(np.asarray(graph_conditioning.edge_counts), repeats, axis=0),
-            node_label_histograms=node_label_histograms,
         )
 
     def _decode_conditioning_batch(
@@ -1742,6 +1736,7 @@ class EqMDecompositionalGraphGenerator(object):
         Returns:
             List[nx.Graph]: Computed result.
         """
+        self._require_fitted_for_generation()
         if self.verbose:
             print(f"Decoding {len(graph_conditioning)} conditioning vectors")
             if desired_target is not None:
@@ -1778,6 +1773,7 @@ class EqMDecompositionalGraphGenerator(object):
         Returns:
             List[nx.Graph]: Computed result.
         """
+        self._require_fitted_for_generation()
         if self.verbose:
             print(f"Sampling {n_samples} graphs")
             if desired_target is not None:
@@ -1817,6 +1813,7 @@ class EqMDecompositionalGraphGenerator(object):
         Returns:
             List[List[nx.Graph]]: Computed result.
         """
+        self._require_fitted_for_generation()
         _, graph_conditioning = self.encode(graphs)
         repeated_conditioning = self._repeat_graph_conditioning(
             graph_conditioning,
@@ -1846,6 +1843,7 @@ class EqMDecompositionalGraphGenerator(object):
         guidance_scale: float = 1.0,
         apply_feasibility_filtering: Optional[bool] = None,
     ):
+        self._require_fitted_for_generation()
         sampled_seed_graphs = random.choices(graphs, k=n_samples)
         reconstructed_graphs_list = self.conditional_sample(
             sampled_seed_graphs,
@@ -1877,6 +1875,7 @@ class EqMDecompositionalGraphGenerator(object):
         Returns:
             Dict[str, Any]: Computed result.
         """
+        self._require_fitted_for_generation()
 
         cond_a = self.graph_encode([G1])
         cond_b = self.graph_encode([G2])
@@ -1910,21 +1909,10 @@ class EqMDecompositionalGraphGenerator(object):
             minimum=0,
         )
 
-        interpolated_histograms = None
-        if cond_a.node_label_histograms is not None and cond_b.node_label_histograms is not None:
-            interpolated_histograms = np.stack(
-                [
-                    (1.0 - t) * cond_a.node_label_histograms[0] + t * cond_b.node_label_histograms[0]
-                    for t in ts
-                ],
-                axis=0,
-            )
-
         interpolated_conditioning = GraphConditioningBatch(
             graph_embeddings=interpolated_graph_embeddings,
             node_counts=interpolated_node_counts,
             edge_counts=interpolated_edge_counts,
-            node_label_histograms=interpolated_histograms,
         )
         decoded_slots = self._decode_with_feasibility_slots(
             interpolated_conditioning,
@@ -1960,20 +1948,17 @@ class EqMDecompositionalGraphGenerator(object):
         Returns:
             nx.Graph: Computed result.
         """
+        self._require_fitted_for_generation()
         graph_conditioning = self.graph_encode(graphs)
         Y = np.vstack(graph_conditioning.graph_embeddings)
         centroid = scaled_slerp_average(Y)
         mean_node_count = int(round(np.mean(graph_conditioning.node_counts)))
         mean_edge_count = int(round(np.mean(graph_conditioning.edge_counts)))
-        mean_hist = None
-        if graph_conditioning.node_label_histograms is not None:
-            mean_hist = np.asarray([np.mean(graph_conditioning.node_label_histograms, axis=0)])
         return self.decode(
             GraphConditioningBatch(
                 graph_embeddings=np.asarray([centroid]),
                 node_counts=np.asarray([mean_node_count], dtype=np.int64),
                 edge_counts=np.asarray([mean_edge_count], dtype=np.int64),
-                node_label_histograms=mean_hist,
             )
         )[0]
     

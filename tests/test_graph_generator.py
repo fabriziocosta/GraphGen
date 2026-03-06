@@ -1,10 +1,14 @@
 import numpy as np
 import networkx as nx
 import pytest
+import pulp
 
 from eqm_decompositional_graph_generator.graph_engine import (
+    DEFAULT_DUMMY_NODE_LABEL,
+    EqMDecompositionalGraphDecoder,
     EqMDecompositionalGraphGenerator,
 )
+from eqm_decompositional_graph_generator.node_engine import GeneratedNodeBatch
 
 
 class _GraphVectorizer:
@@ -55,6 +59,14 @@ def _unlabeled_edge_graph():
     graph.add_node(0, label="C")
     graph.add_node(1, label="N")
     graph.add_edge(0, 1)
+    return graph
+
+
+def _unlabeled_node_graph():
+    graph = nx.Graph()
+    graph.add_node(0)
+    graph.add_node(1)
+    graph.add_edge(0, 1, label="-")
     return graph
 
 
@@ -133,6 +145,59 @@ def test_graphs_to_edge_label_targets_returns_ordered_pairs_for_labeled_edges():
     assert edge_targets.tolist() == ["-", "-"]
 
 
+def test_graphs_to_node_label_targets_uses_dummy_label_when_all_nodes_are_unlabelled():
+    generator = EqMDecompositionalGraphGenerator(verbose=False)
+
+    node_targets = generator.graphs_to_node_label_targets([_unlabeled_node_graph()])
+
+    assert len(node_targets) == 1
+    assert node_targets[0].tolist() == [DEFAULT_DUMMY_NODE_LABEL, DEFAULT_DUMMY_NODE_LABEL]
+
+
+def test_graphs_to_node_label_targets_rejects_mixed_labelled_and_unlabelled_nodes():
+    generator = EqMDecompositionalGraphGenerator(verbose=False)
+    graph = _labeled_graph()
+    del graph.nodes[1]["label"]
+
+    with pytest.raises(ValueError, match="either present for every node"):
+        generator.graphs_to_node_label_targets([graph])
+
+
+def test_build_supervision_plan_uses_dummy_label_as_constant_when_nodes_are_unlabelled():
+    generator = EqMDecompositionalGraphGenerator(verbose=False)
+    node_label_targets = generator.graphs_to_node_label_targets([_unlabeled_node_graph()])
+
+    plan = generator._build_supervision_plan(
+        graphs=[],
+        node_label_targets=node_label_targets,
+        edge_label_targets=np.asarray(["-"], dtype=object),
+    )
+
+    assert plan.node_labels.mode == "constant"
+    assert plan.node_labels.constant_value == DEFAULT_DUMMY_NODE_LABEL
+
+
+def test_decode_node_labels_assigns_dummy_constant_label_for_unlabelled_training_setup():
+    decoder = EqMDecompositionalGraphDecoder(verbose=False)
+    decoder.supervision_plan_ = type(
+        "_Plan",
+        (),
+        {
+            "node_labels": type(
+                "_Channel",
+                (),
+                {"mode": "constant", "constant_value": DEFAULT_DUMMY_NODE_LABEL},
+            )()
+        },
+    )()
+
+    labels = decoder.decode_node_labels(
+        GeneratedNodeBatch(node_embeddings_list=[np.zeros((2, 3), dtype=float)])
+    )
+
+    assert labels[0].tolist() == [DEFAULT_DUMMY_NODE_LABEL, DEFAULT_DUMMY_NODE_LABEL]
+
+
 def test_encode_paths_return_expected_shapes_and_counts():
     g1 = _labeled_graph()
     g2 = _labeled_graph()
@@ -174,3 +239,37 @@ def test_build_node_batch_masks_presence_and_degrees():
     assert batch.node_presence_mask.shape == (1, 2)
     assert batch.node_presence_mask.tolist() == [[True, True]]
     assert batch.node_degree_targets.tolist() == [[1, 1]]
+
+
+def test_optimize_adjacency_matrix_raises_when_solver_status_is_not_optimal(monkeypatch):
+    decoder = EqMDecompositionalGraphDecoder(verbose=False)
+
+    def _fake_solve(self, solver):
+        del solver
+        self.status = pulp.LpStatusInfeasible
+        return self.status
+
+    monkeypatch.setattr(pulp.LpProblem, "solve", _fake_solve)
+
+    with pytest.raises(RuntimeError, match="did not produce an optimal solution"):
+        decoder.optimize_adjacency_matrix(
+            prob_matrix=np.array([[0.0, 0.9], [0.9, 0.0]], dtype=float),
+            target_degrees=[1, 1],
+        )
+
+
+def test_optimize_adjacency_matrix_raises_when_variable_value_is_missing(monkeypatch):
+    decoder = EqMDecompositionalGraphDecoder(verbose=False)
+
+    def _fake_solve(self, solver):
+        del solver
+        self.status = pulp.LpStatusOptimal
+        return self.status
+
+    monkeypatch.setattr(pulp.LpProblem, "solve", _fake_solve)
+
+    with pytest.raises(RuntimeError, match="without assigning all decision variables"):
+        decoder.optimize_adjacency_matrix(
+            prob_matrix=np.array([[0.0, 0.9], [0.9, 0.0]], dtype=float),
+            target_degrees=[1, 1],
+        )
