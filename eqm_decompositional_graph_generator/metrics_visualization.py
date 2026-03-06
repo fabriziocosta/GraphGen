@@ -3,6 +3,7 @@
 from typing import Dict, Sequence
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 
 
@@ -44,11 +45,32 @@ def _loess_smooth(data: Sequence[float], window_size: int) -> np.ndarray:
     return np.exp(smoothed) if use_log_domain else smoothed
 
 
+def _format_log_tick(value: float, _: float) -> str:
+    if not np.isfinite(value) or value <= 0:
+        return ""
+    if value >= 1e4 or value < 1e-2:
+        return f"{value:.1e}".replace("e+0", "e").replace("e+", "e").replace("e-0", "e-")
+    if value >= 10:
+        return f"{value:.0f}" if np.isclose(value, round(value)) else f"{value:.1f}"
+    if value >= 1:
+        return f"{value:.1f}"
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _style_log_axis(axis: plt.Axes) -> None:
+    axis.set_yscale("log")
+    axis.yaxis.set_major_locator(mticker.LogLocator(base=10.0, subs=(1.0, 2.0, 5.0), numticks=5))
+    axis.yaxis.set_major_formatter(mticker.FuncFormatter(_format_log_tick))
+    axis.yaxis.set_minor_locator(mticker.NullLocator())
+    axis.yaxis.set_minor_formatter(mticker.NullFormatter())
+    axis.yaxis.get_offset_text().set_visible(False)
+
+
 def plot_metrics(
     train_metrics: Dict[str, Sequence[float]],
     val_metrics: Dict[str, Sequence[float]],
     window: int = 10,
-    alpha: float = 0.3,
+    alpha: float = 0.55,
 ) -> None:
     """Visualise train/validation metrics with LOESS-smoothed overlays."""
     metrics = [
@@ -106,8 +128,8 @@ def plot_metrics(
             train = train_vals[:count]
             val = val_vals[:count]
             epochs = np.arange(1, count + 1)
-            metric_ax.plot(epochs, train, color=color, alpha=alpha, linewidth=1.0)
-            metric_ax.plot(epochs, val, color=color, linestyle="--", alpha=alpha, linewidth=1.0)
+            metric_ax.plot(epochs, train, color=color, alpha=alpha, linewidth=1.35)
+            metric_ax.plot(epochs, val, color=color, linestyle="--", alpha=alpha, linewidth=1.35)
             sm_train = _loess_smooth(train, window)
             sm_val = _loess_smooth(val, window)
             line_train, = metric_ax.plot(
@@ -125,7 +147,7 @@ def plot_metrics(
                 linestyle="--",
                 label=f"Val {name} (LOESS)",
             )
-            metric_ax.set_yscale("log")
+            _style_log_axis(metric_ax)
             metric_ax.set_ylabel(name, color=color, rotation=90)
             metric_ax.tick_params(axis="y", colors=color)
             if metric_idx == 0:

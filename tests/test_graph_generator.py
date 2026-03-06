@@ -220,6 +220,50 @@ def test_decode_adjacency_matrix_does_not_use_node_embedding_shapes():
     assert adj_mtx_list[0].shape == (2, 2)
 
 
+def test_parallel_decode_matches_serial_decode():
+    generated_nodes = GeneratedNodeBatch(
+        node_embeddings_list=[
+            np.zeros((2, 3), dtype=float),
+            np.zeros((2, 3), dtype=float),
+        ],
+        node_presence_mask=np.asarray([[True, True], [True, True]], dtype=bool),
+        node_degree_predictions=np.asarray([[1, 1], [1, 1]], dtype=float),
+        edge_probability_matrices=[
+            np.asarray([[0.0, 0.9], [0.9, 0.0]], dtype=float),
+            np.asarray([[0.0, 0.8], [0.8, 0.0]], dtype=float),
+        ],
+    )
+    predicted_node_labels = [
+        np.asarray(["C", "O"], dtype=object),
+        np.asarray(["N", "C"], dtype=object),
+    ]
+    predicted_edge_label_matrices = [
+        np.asarray([[None, "-"], ["-", None]], dtype=object),
+        np.asarray([[None, "="], ["=", None]], dtype=object),
+    ]
+
+    serial_decoder = EqMDecompositionalGraphDecoder(verbose=False, n_jobs=1)
+    parallel_decoder = EqMDecompositionalGraphDecoder(verbose=False, n_jobs=2)
+
+    serial_graphs = serial_decoder.decode(
+        generated_nodes,
+        predicted_node_labels_list=predicted_node_labels,
+        predicted_edge_probability_matrices=generated_nodes.edge_probability_matrices,
+        predicted_edge_label_matrices=predicted_edge_label_matrices,
+    )
+    parallel_graphs = parallel_decoder.decode(
+        generated_nodes,
+        predicted_node_labels_list=predicted_node_labels,
+        predicted_edge_probability_matrices=generated_nodes.edge_probability_matrices,
+        predicted_edge_label_matrices=predicted_edge_label_matrices,
+    )
+
+    assert len(serial_graphs) == len(parallel_graphs) == 2
+    for serial_graph, parallel_graph in zip(serial_graphs, parallel_graphs):
+        assert sorted(serial_graph.nodes(data=True)) == sorted(parallel_graph.nodes(data=True))
+        assert sorted(serial_graph.edges(data=True)) == sorted(parallel_graph.edges(data=True))
+
+
 def test_encode_paths_return_expected_shapes_and_counts():
     g1 = _labeled_graph()
     g2 = _labeled_graph()

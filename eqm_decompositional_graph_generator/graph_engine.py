@@ -1,6 +1,8 @@
 """Graph encoder/decoder helpers used by the maintained conditional graph-generation pipeline."""
 
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
+import os
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -117,6 +119,102 @@ def scaled_slerp_average(vectors: np.ndarray) -> np.ndarray:
     return avg_dir * avg_mag                         # (D,)
 
 
+def _normalize_n_jobs(n_jobs: Optional[int]) -> int:
+    if n_jobs is None:
+        return 1
+    n_jobs = int(n_jobs)
+    if n_jobs == 0:
+        raise ValueError("n_jobs must be != 0.")
+    if n_jobs < 0:
+        cpu_count = os.cpu_count() or 1
+        return max(1, cpu_count + 1 + n_jobs)
+    return max(1, n_jobs)
+
+
+def _parallel_map(func, jobs, max_workers: int, verbose: bool = False):
+    if max_workers <= 1 or len(jobs) <= 1:
+        return [func(job) for job in jobs]
+    try:
+        with ProcessPoolExecutor(max_workers=min(max_workers, len(jobs))) as executor:
+            return list(executor.map(func, jobs))
+    except (OSError, PermissionError):
+        if verbose:
+            print("Process-based decode parallelism unavailable; falling back to threads.")
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(jobs))) as executor:
+            return list(executor.map(func, jobs))
+
+
+def _decode_single_adjacency_job(
+    prob_list: np.ndarray,
+    existence_mask: np.ndarray,
+    degree_prediction: np.ndarray,
+    degree_slack_penalty: float,
+    enforce_connectivity: bool,
+    warm_start_mst: bool,
+    verbose: bool,
+) -> np.ndarray:
+    decoder = EqMDecompositionalGraphDecoder(
+        verbose=verbose,
+        degree_slack_penalty=degree_slack_penalty,
+        enforce_connectivity=enforce_connectivity,
+        warm_start_mst=warm_start_mst,
+    )
+    n_nodes = min(len(existence_mask), len(degree_prediction))
+    prob_matrix = np.zeros((n_nodes, n_nodes))
+    idx = 0
+    for i in range(n_nodes):
+        for j in range(n_nodes):
+            if i != j:
+                prob_matrix[i, j] = prob_list[idx]
+                idx += 1
+    existent = np.asarray(existence_mask[:n_nodes], dtype=bool)
+    for i in range(n_nodes):
+        for j in range(n_nodes):
+            if not (existent[i] and existent[j]):
+                prob_matrix[i, j] = 0
+    prob_matrix = (prob_matrix + prob_matrix.T) / 2
+    target_degrees = decoder.get_degrees(
+        np.asarray(degree_prediction[:n_nodes], dtype=float),
+        existent,
+    )
+    return decoder.optimize_adjacency_matrix(prob_matrix, target_degrees)
+
+
+def _decode_single_adjacency_job_star(args) -> np.ndarray:
+    return _decode_single_adjacency_job(*args)
+
+
+def _assemble_graph_job(
+    node_presence_mask: np.ndarray,
+    node_labels: np.ndarray,
+    edge_labels: np.ndarray,
+    adj_mtx: np.ndarray,
+) -> nx.Graph:
+    graph = nx.from_numpy_array(adj_mtx)
+
+    if len(node_labels) > 0 and not all(label is None for label in node_labels):
+        node_label_map = {i: label for i, label in enumerate(node_labels)}
+        nx.set_node_attributes(graph, node_label_map, "label")
+
+    if np.sum(adj_mtx) > 0 and len(edge_labels) > 0:
+        n_nodes = graph.number_of_nodes()
+        edge_idx = 0
+        edge_attr = {}
+        for i in range(n_nodes):
+            for j in range(i + 1, n_nodes):
+                if adj_mtx[i, j] != 0:
+                    edge_attr[(i, j)] = edge_labels[edge_idx]
+                    edge_idx += 1
+        nx.set_edge_attributes(graph, edge_attr, "label")
+
+    existent_indices = np.where(np.asarray(node_presence_mask[:adj_mtx.shape[0]], dtype=bool))[0]
+    return graph.subgraph(existent_indices).copy()
+
+
+def _assemble_graph_job_star(args) -> nx.Graph:
+    return _assemble_graph_job(*args)
+
+
 # =============================================================================
 # EqMDecompositionalGraphDecoder Class
 # =============================================================================
@@ -131,6 +229,7 @@ class EqMDecompositionalGraphDecoder(object):
         enforce_connectivity: bool = True,
         degree_slack_penalty: float = 1e6,
         warm_start_mst: bool = True,
+        n_jobs: int = 1,
     ) -> None:
         """Store graph decoding hyper-parameters.
 
@@ -140,12 +239,15 @@ class EqMDecompositionalGraphDecoder(object):
             enforce_connectivity (bool): Optional input value.
             degree_slack_penalty (float): Optional input value.
             warm_start_mst (bool): Optional input value.
+            n_jobs (int): Number of worker processes used for per-graph decode. Use `1`
+                to disable parallelism and `-1` to use all available CPUs.
         """
         self.verbose                    = verbose
         self.existence_threshold        = existence_threshold
         self.enforce_connectivity       = enforce_connectivity
         self.degree_slack_penalty       = degree_slack_penalty
         self.warm_start_mst             = warm_start_mst
+        self.n_jobs                     = _normalize_n_jobs(n_jobs)
         self.supervision_plan_          = None
 
     def _plan_channel(self, channel_name: str) -> Optional[SupervisionChannelPlan]:
@@ -678,37 +780,21 @@ class EqMDecompositionalGraphDecoder(object):
                 mask = ~np.eye(n_nodes, dtype=bool)
                 predicted_probs_list.append(prob_matrix[mask])
         
-        adj_mtx_list = []
-        # Process each graph's predictions.
-        for graph_idx, prob_list in enumerate(predicted_probs_list):
-            n_nodes = min(
-                len(existence_masks[graph_idx]),
-                len(degree_predictions[graph_idx]),
+        jobs = [
+            (
+                np.asarray(predicted_probs_list[graph_idx], dtype=float),
+                np.asarray(existence_masks[graph_idx], dtype=bool),
+                np.asarray(degree_predictions[graph_idx], dtype=float),
+                float(self.degree_slack_penalty),
+                bool(self.enforce_connectivity),
+                bool(self.warm_start_mst),
+                bool(self.verbose),
             )
-            idx = 0
-            prob_matrix = np.zeros((n_nodes, n_nodes))
-            # Reconstruct the probability matrix from the flat list.
-            for i in range(n_nodes):
-                for j in range(n_nodes):
-                    if i != j:
-                        prob_matrix[i, j] = prob_list[idx]
-                        idx += 1
-            # Zero out probabilities for edges where either node is non-existent.
-            existent = np.asarray(existence_masks[graph_idx][:n_nodes], dtype=bool)
-            for i in range(n_nodes):
-                for j in range(n_nodes):
-                    if not (existent[i] and existent[j]):
-                        prob_matrix[i, j] = 0
-            # Ensure the matrix is symmetric.
-            prob_matrix = (prob_matrix + prob_matrix.T) / 2
-            target_degrees = self.get_degrees(
-                np.asarray(degree_predictions[graph_idx][:n_nodes], dtype=float),
-                existent,
-            )
-            # Optimize the probability matrix into a binary adjacency matrix.
-            adj = self.optimize_adjacency_matrix(prob_matrix, target_degrees)
-            adj_mtx_list.append(adj)
-        return adj_mtx_list
+            for graph_idx in range(len(predicted_probs_list))
+        ]
+        if self.n_jobs == 1 or len(jobs) <= 1:
+            return [_decode_single_adjacency_job(*job) for job in jobs]
+        return _parallel_map(_decode_single_adjacency_job_star, jobs, self.n_jobs, verbose=bool(self.verbose))
 
     def decode_node_labels(
         self,
@@ -832,34 +918,23 @@ class EqMDecompositionalGraphDecoder(object):
             predicted_edge_label_matrices=predicted_edge_label_matrices,
         )
         
-        graphs = []
-        for node_presence_mask, node_labels, edge_labels, adj_mtx in zip(
+        jobs = [
+            (
+                np.asarray(node_presence_mask, dtype=bool),
+                np.asarray(node_labels, dtype=object),
+                np.asarray(edge_labels, dtype=object),
+                np.asarray(adj_mtx, dtype=float),
+            )
+            for node_presence_mask, node_labels, edge_labels, adj_mtx in zip(
                 generated_nodes.node_presence_mask,
                 predicted_node_labels_list,
                 predicted_edge_labels_list,
-                adj_mtx_list):
-            graph = nx.from_numpy_array(adj_mtx)
-            
-            if len(node_labels) > 0 and not all(label is None for label in node_labels):
-                node_label_map = {i: label for i, label in enumerate(node_labels)}
-                nx.set_node_attributes(graph, node_label_map, 'label')
-            
-            if np.sum(adj_mtx) > 0 and len(edge_labels) > 0:
-                n_nodes = graph.number_of_nodes()
-                edge_idx = 0
-                edge_attr = {}
-                for i in range(n_nodes):
-                    for j in range(i + 1, n_nodes):
-                        if adj_mtx[i, j] != 0:
-                            edge_attr[(i, j)] = edge_labels[edge_idx]
-                            edge_idx += 1
-                nx.set_edge_attributes(graph, edge_attr, 'label')
-            
-            existent_indices = np.where(np.asarray(node_presence_mask[:adj_mtx.shape[0]], dtype=bool))[0]
-            filtered_graph = graph.subgraph(existent_indices).copy()
-            graphs.append(filtered_graph)
-        
-        return graphs
+                adj_mtx_list,
+            )
+        ]
+        if self.n_jobs == 1 or len(jobs) <= 1:
+            return [_assemble_graph_job(*job) for job in jobs]
+        return _parallel_map(_assemble_graph_job_star, jobs, self.n_jobs, verbose=bool(self.verbose))
     
     def save(self, filename: str = 'generative_model.obj') -> None:
         """Serialise the current object to `filename` using pickle.
