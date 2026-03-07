@@ -6,7 +6,7 @@ Implementation anchors:
 
 - [`../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py)
 - [`../conditional_node_field_graph_generator/conditional_node_field_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_generator.py)
-- [`DECODER_README.md`](DECODER_README.md)
+- [`CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
 - [`CONDITIONAL_NODE_FIELD_README.md`](CONDITIONAL_NODE_FIELD_README.md)
 
 ## Scope
@@ -45,11 +45,11 @@ flowchart LR
     end
 
     subgraph MODEL[Generation]
-        NG[Conditional Node Generator]
+        NG[Conditional Node Field Generator]
     end
 
     subgraph DECODE[Reconstruction]
-        DEC[Graph Decoder + ILP]
+        DEC[Conditional Node Field Graph Decoder + ILP]
         NX[Decoded Graphs]
     end
 
@@ -120,7 +120,7 @@ Its most important job is structural reconstruction:
 - enforce structural consistency with a solver,
 - attach node and edge labels according to the supervision plan.
 
-The decoder and solver details are documented in [`DECODER_README.md`](DECODER_README.md).
+The decoder and solver details are documented in [`CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md).
 
 ## Data Model
 
@@ -194,9 +194,9 @@ flowchart TD
     E --> H[GraphConditioningBatch]
     F --> I[NodeGenerationBatch]
     G --> I
-    H --> J[Node Generator Setup]
+    H --> J[Conditional Node Field Setup]
     I --> J
-    J --> K[Node Generator Fit]
+    J --> K[Conditional Node Field Fit]
     K --> L[Fitted Graph Generator]
 
     classDef data fill:#f6efe5,stroke:#9a6b2f,stroke-width:1.2px,color:#2f2419;
@@ -315,9 +315,9 @@ The inference path reuses the same components but in reverse.
 flowchart TD
     A[Condition Source]
     B[GraphConditioningBatch]
-    C[Node Generator Predict]
+    C[Conditional Node Field Predict]
     D[GeneratedNodeBatch]
-    E[Decoder]
+    E[Conditional Node Field Graph Decoder]
     F[Adjacency Solve]
     G[Label Assignment]
     H[Decoded Graphs]
@@ -551,6 +551,6 @@ For someone new to the codebase, the fastest way to build accurate context is:
 1. [`../README.md`](../README.md)
 2. this file
 3. [`CONDITIONAL_NODE_FIELD_README.md`](CONDITIONAL_NODE_FIELD_README.md)
-4. [`DECODER_README.md`](DECODER_README.md)
+4. [`CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
 5. [`../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py)
 6. [`../conditional_node_field_graph_generator/conditional_node_field_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_generator.py)

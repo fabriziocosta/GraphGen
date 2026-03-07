@@ -33,7 +33,7 @@ At generation time the overall flow is:
 flowchart LR
     GC[GraphConditioningBatch]
     GNB[GeneratedNodeBatch]
-    DEC[Graph Decoder]
+    DEC[Conditional Node Field Graph Decoder]
     ILP[Constraint Solver]
     LAB[Label Reconstruction]
     G[Decoded Graphs]
