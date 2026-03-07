@@ -1,4 +1,4 @@
-# GraphGen
+# Conditional Node Field for Graph Generation
 
 GraphGen is a conditional graph generation framework based on decompositional encoding and decoding, coupled with equilibrium-style node-generation dynamics. Its central premise is to use an explicit graph kernel to derive node embeddings without end-to-end training while incorporating user-defined priors, thereby enabling the rapid injection of structured prior knowledge independently of the available data.
 
