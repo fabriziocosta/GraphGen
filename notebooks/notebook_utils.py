@@ -109,6 +109,7 @@ def plot_networkx_graphs(
     show_label=True,
     color_offset=200,
     mode="not_molecule",
+    titles=None,
 ):
     if mode == "molecule":
         from coco_grape.visualizer.mol_display import draw_molecules
@@ -123,6 +124,8 @@ def plot_networkx_graphs(
     if n_graphs == 0:
         print("No graphs to display.")
         return
+    if titles is not None and len(titles) != n_graphs:
+        raise ValueError(f"titles must align with graphs (got {len(titles)} titles for {n_graphs} graphs).")
     if n_cols is None:
         n_cols = n_graphs
     n_rows = math.ceil(n_graphs / n_cols)
@@ -148,6 +151,8 @@ def plot_networkx_graphs(
     for i, graph in enumerate(graphs):
         ax = axes[i]
         ax.axis("off")
+        if titles is not None:
+            ax.set_title(str(titles[i]))
         pos = nx.kamada_kawai_layout(graph)
         node_colors = []
         labels = {}
