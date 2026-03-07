@@ -29,6 +29,29 @@ At generation time the overall flow is:
 2. The conditional node generator predicts a `GeneratedNodeBatch`.
 3. `EquilibriumMatchingDecompositionalGraphDecoder.decode(...)` reconstructs final `networkx.Graph` objects.
 
+```mermaid
+flowchart LR
+    GC[GraphConditioningBatch]
+    GNB[GeneratedNodeBatch]
+    DEC[Graph Decoder]
+    ILP[Constraint Solver]
+    LAB[Label Reconstruction]
+    G[Decoded Graphs]
+    FEAS[Feasibility Filter]
+    OUT[Accepted Outputs]
+
+    GC --> DEC
+    GNB --> DEC
+    DEC --> ILP --> LAB --> G --> FEAS --> OUT
+
+    classDef data fill:#f6efe5,stroke:#9a6b2f,stroke-width:1.2px,color:#2f2419;
+    classDef model fill:#e7f0ea,stroke:#2e6a4f,stroke-width:1.2px,color:#173728;
+    classDef decode fill:#e8eef7,stroke:#3d5f8c,stroke-width:1.2px,color:#1d2d44;
+
+    class GC,GNB,G,OUT data;
+    class DEC,ILP,LAB,FEAS decode;
+```
+
 The decoder operates on these predicted channels:
 
 - `node_presence_mask`
@@ -106,6 +129,32 @@ The structural pipeline in `decode_adjacency_matrix(...)` is:
 6. Symmetrize the matrix.
 7. Convert predicted degrees plus node existence into integer degree targets.
 8. Solve an optimization problem that chooses the final binary adjacency matrix.
+
+```mermaid
+flowchart TD
+    A[Predicted Node Existence]
+    B[Predicted Degrees]
+    C[Predicted Edge Probabilities]
+    D[Mask Invalid Nodes]
+    E[Symmetrize Edge Scores]
+    F[Build Integer Degree Targets]
+    G[Formulate MILP]
+    H[Solve Adjacency]
+    I[Binary Graph Structure]
+
+    A --> D
+    C --> D --> E --> G
+    B --> F --> G
+    G --> H --> I
+
+    classDef data fill:#f6efe5,stroke:#9a6b2f,stroke-width:1.2px,color:#2f2419;
+    classDef process fill:#f7f4ea,stroke:#8a7a3d,stroke-width:1.2px,color:#3a3218;
+    classDef decode fill:#e8eef7,stroke:#3d5f8c,stroke-width:1.2px,color:#1d2d44;
+
+    class A,B,C,I data;
+    class D,E,F process;
+    class G,H decode;
+```
 
 The important design choice is that the final graph is not obtained by thresholding edges independently. It is obtained by a global optimization that tries to satisfy all node degrees at once and optionally enforce connectivity.
 

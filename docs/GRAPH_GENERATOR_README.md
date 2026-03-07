@@ -29,6 +29,49 @@ It is not itself the neural model and it is not itself the combinatorial decoder
 
 At a high level, the architecture has four collaborating parts.
 
+```mermaid
+flowchart LR
+    G[Training / Input Graphs]
+
+    subgraph REP[Representation]
+        GV[Graph Vectorizer]
+        NV[Node Vectorizer]
+    end
+
+    subgraph BATCH[Batch Objects]
+        GCB[GraphConditioningBatch]
+        NGB[NodeGenerationBatch]
+        GNB[GeneratedNodeBatch]
+    end
+
+    subgraph MODEL[Generation]
+        NG[Conditional Node Generator]
+    end
+
+    subgraph DECODE[Reconstruction]
+        DEC[Graph Decoder + ILP]
+        NX[Decoded Graphs]
+    end
+
+    G --> GV --> GCB
+    G --> NV --> NGB
+    GCB --> NG
+    NGB --> NG
+    NG --> GNB
+    GCB --> DEC
+    GNB --> DEC --> NX
+
+    classDef data fill:#f6efe5,stroke:#9a6b2f,stroke-width:1.2px,color:#2f2419;
+    classDef model fill:#e7f0ea,stroke:#2e6a4f,stroke-width:1.2px,color:#173728;
+    classDef decode fill:#e8eef7,stroke:#3d5f8c,stroke-width:1.2px,color:#1d2d44;
+    classDef group fill:#fbfbfb,stroke:#b8b8b8,stroke-width:1px,color:#333;
+
+    class G,GCB,NGB,GNB data;
+    class NG model;
+    class DEC,NX decode;
+    class REP,BATCH,MODEL,DECODE group;
+```
+
 ### 1. Graph-Level Vectorizer
 
 `graph_vectorizer` maps a full graph to a fixed-width graph embedding used as part of the conditioning signal.
@@ -139,6 +182,32 @@ The current architecture keeps both because the generation process is allowed to
 
 The `fit()` path in `EquilibriumMatchingDecompositionalGraphGenerator` follows a clear sequence.
 
+```mermaid
+flowchart TD
+    A[Training Graphs] --> B[Fit Vectorizers]
+    A --> C[Inspect Labels]
+    C --> D[Build Supervision Plan]
+    B --> E[Encode Graph Context]
+    B --> F[Encode Node Embeddings]
+    A --> G[Build Structural Targets]
+    D --> G
+    E --> H[GraphConditioningBatch]
+    F --> I[NodeGenerationBatch]
+    G --> I
+    H --> J[Node Generator Setup]
+    I --> J
+    J --> K[Node Generator Fit]
+    K --> L[Fitted Graph Generator]
+
+    classDef data fill:#f6efe5,stroke:#9a6b2f,stroke-width:1.2px,color:#2f2419;
+    classDef process fill:#f7f4ea,stroke:#8a7a3d,stroke-width:1.2px,color:#3a3218;
+    classDef model fill:#e7f0ea,stroke:#2e6a4f,stroke-width:1.2px,color:#173728;
+
+    class A,H,I,L data;
+    class B,C,D,E,F,G process;
+    class J,K model;
+```
+
 ### Step 1. Fit External Encoders
 
 The generator first fits:
@@ -241,6 +310,31 @@ When training completes, the graph generator marks itself as fitted and becomes 
 ## Inference Architecture
 
 The inference path reuses the same components but in reverse.
+
+```mermaid
+flowchart TD
+    A[Condition Source]
+    B[GraphConditioningBatch]
+    C[Node Generator Predict]
+    D[GeneratedNodeBatch]
+    E[Decoder]
+    F[Adjacency Solve]
+    G[Label Assignment]
+    H[Decoded Graphs]
+    I[Feasibility Filter]
+    J[Accepted Outputs]
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J
+    B --> E
+
+    classDef data fill:#f6efe5,stroke:#9a6b2f,stroke-width:1.2px,color:#2f2419;
+    classDef model fill:#e7f0ea,stroke:#2e6a4f,stroke-width:1.2px,color:#173728;
+    classDef decode fill:#e8eef7,stroke:#3d5f8c,stroke-width:1.2px,color:#1d2d44;
+
+    class A,B,D,H,J data;
+    class C model;
+    class E,F,G,I decode;
+```
 
 ### 1. Produce Conditioning
 

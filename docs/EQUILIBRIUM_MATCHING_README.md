@@ -25,6 +25,31 @@ In this repository, the Equilibrium Matching generator is used as the `condition
 2. train the Equilibrium Matching conditional generator to map graph-level conditions to node-level structural and semantic predictions,
 3. use the model heads and graph decoder to map generated node-level predictions back into graphs.
 
+```mermaid
+flowchart LR
+    X[Node Feature Tensor]
+    C[Graph Conditioning]
+    ENC[Conditional Transformer]
+    POT[Scalar Potential]
+    SCORE[Score Field]
+    AUX[Auxiliary Heads]
+    OUT[Node-Level Predictions]
+
+    X --> ENC
+    C --> ENC
+    ENC --> POT --> SCORE
+    ENC --> AUX
+    SCORE --> OUT
+    AUX --> OUT
+
+    classDef data fill:#f6efe5,stroke:#9a6b2f,stroke-width:1.2px,color:#2f2419;
+    classDef model fill:#e7f0ea,stroke:#2e6a4f,stroke-width:1.2px,color:#173728;
+    classDef decode fill:#e8eef7,stroke:#3d5f8c,stroke-width:1.2px,color:#1d2d44;
+
+    class X,C,OUT data;
+    class ENC,POT,SCORE,AUX model;
+```
+
 ## High-Level Idea
 
 Diffusion models learn a time-dependent denoising field:
@@ -279,6 +304,33 @@ That estimate is then reused for auxiliary supervised heads.
 ## Auxiliary And Structural Losses
 
 The Equilibrium Matching generator is not only trained to learn a conditional energy landscape. It also predicts graph-structural properties through supervised heads and soft global consistency terms.
+
+```mermaid
+flowchart TD
+    A[Clean Node Features] --> B[Gaussian Corruption]
+    B --> C[Noisy Inputs]
+    D[Graph Conditioning] --> E[Conditional Transformer]
+    C --> E
+    E --> F[Scalar Potential]
+    F --> G[Autograd Score]
+    C --> H[Target Score]
+    G --> I[Score-Matching Loss]
+    H --> I
+    E --> J[Auxiliary Heads]
+    J --> K[Existence / Degree / Label / Edge Losses]
+    J --> L[Global Consistency Penalties]
+    I --> M[Total Objective]
+    K --> M
+    L --> M
+
+    classDef data fill:#f6efe5,stroke:#9a6b2f,stroke-width:1.2px,color:#2f2419;
+    classDef process fill:#f7f4ea,stroke:#8a7a3d,stroke-width:1.2px,color:#3a3218;
+    classDef model fill:#e7f0ea,stroke:#2e6a4f,stroke-width:1.2px,color:#173728;
+
+    class A,C,D,H,M data;
+    class B,I,K,L process;
+    class E,F,G,J model;
+```
 
 The complete loss is easiest to understand as a sum of three groups:
 
