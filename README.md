@@ -10,21 +10,21 @@ Training is supplemented by auxiliary objectives, including node-degree predicti
 
 The main technical documentation lives under [`docs/`](docs/). The documents are split by responsibility so that the modeling details, orchestration layer, decoder logic, and API surface can each be read independently.
 
-[`docs/2_CONDITIONAL_NODE_FIELD_README.md`](docs/2_CONDITIONAL_NODE_FIELD_README.md)
-
-This is the main conceptual and modeling document. It explains the Conditional Node Field formulation itself, including the score-matching objective, the stationary energy-based interpretation, the conditioning pathway, the iterative sampling dynamics, and the distinction between classifier-free guidance and separate post-hoc guidance.
-
-[`docs/4_MAIN_CLASS_INTERFACES_README.md`](docs/4_MAIN_CLASS_INTERFACES_README.md)
-
-This is the interface reference for the main public classes. It summarizes the constructor and workflow methods for the batch dataclasses, the node generator, the graph decoder, and the graph generator, and it explains what the main parameters mean together with the practical effect of increasing or decreasing them.
-
 [`docs/1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md`](docs/1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md)
 
 This document focuses on the graph-generator orchestration layer. It explains how raw graphs are vectorized, how supervision channels are assembled, how the node generator and decoder are coordinated, how graph-level sampling and interpolation work, and how feasibility filtering and graph-level guidance are exposed.
 
+[`docs/2_CONDITIONAL_NODE_FIELD_README.md`](docs/2_CONDITIONAL_NODE_FIELD_README.md)
+
+This is the main conceptual and modeling document. It explains the Conditional Node Field formulation itself, including the score-matching objective, the stationary energy-based interpretation, the conditioning pathway, the iterative sampling dynamics, and the distinction between classifier-free guidance and separate post-hoc guidance.
+
 [`docs/3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](docs/3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
 
 This document covers the decoder and constraint-solving stage. It explains how node-level predictions are converted into final `networkx` graphs, how edge probabilities and predicted degrees are reconciled, how connectivity constraints are enforced, and how the ILP-based adjacency projection behaves.
+
+[`docs/4_MAIN_CLASS_INTERFACES_README.md`](docs/4_MAIN_CLASS_INTERFACES_README.md)
+
+This is the interface reference for the main public classes. It summarizes the constructor and workflow methods for the batch dataclasses, the node generator, the graph decoder, and the graph generator, and it explains what the main parameters mean together with the practical effect of increasing or decreasing them.
 
 [`docs/PREFERENCES.md`](docs/PREFERENCES.md)
 
