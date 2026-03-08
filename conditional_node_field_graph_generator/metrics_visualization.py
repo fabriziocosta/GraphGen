@@ -71,10 +71,11 @@ def plot_metrics(
     val_metrics: Dict[str, Sequence[float]],
     window: int = 10,
     alpha: float = 0.55,
+    log_scale: bool = True,
 ) -> None:
     """Visualise train/validation metrics with LOESS-smoothed overlays."""
-    raw_train_alpha = min(alpha * 0.35, 0.18)
-    raw_val_alpha = min(alpha * 0.45, 0.22)
+    raw_train_alpha = 0.3
+    raw_val_alpha = 0.3
     smoothed_train_alpha = 0.7
     smoothed_val_alpha = 1.0
     raw_train_linewidth = 1.0
@@ -170,7 +171,8 @@ def plot_metrics(
                 linewidth=smoothed_val_linewidth,
                 label=f"{name}: val",
             )
-            _style_log_axis(metric_ax)
+            if log_scale:
+                _style_log_axis(metric_ax)
             metric_ax.set_ylabel(name, color=color, rotation=90)
             metric_ax.tick_params(axis="y", colors=color)
             if metric_idx == 0:

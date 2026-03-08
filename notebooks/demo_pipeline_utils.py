@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import sys
 from typing import Callable
@@ -33,6 +34,13 @@ from conditional_node_field_graph_generator.conditional_node_field_graph_generat
     ConditionalNodeFieldGraphDecoder,
     ConditionalNodeFieldGraphGenerator,
 )
+
+
+def _resolve_pubchem_dir() -> Path:
+    env_path = os.environ.get("PUBCHEM_DATA_DIR")
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return _PROJECT_ROOT / "notebooks" / "datasets" / "PUBCHEM"
 
 
 def build_dataset(dataset_type, dataset_size=50, size=5, assay_id="651610"):
@@ -71,8 +79,12 @@ def build_dataset(dataset_type, dataset_size=50, size=5, assay_id="651610"):
         from coco_grape.data_loader.mol.mol_loader import PubChemLoader
         from coco_grape.visualizer.mol_display import draw_molecules
 
+        pubchem_dir = _resolve_pubchem_dir()
+
         def pubchem_loader():
-            return PubChemLoader().load(assay_id)
+            loader = PubChemLoader()
+            loader.pubchem_dir = str(pubchem_dir)
+            return loader.load(assay_id, dirname=str(pubchem_dir))
 
         original_graphs, original_targets = SupervisedDataSetLoader(
             pubchem_loader,

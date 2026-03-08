@@ -90,8 +90,7 @@ Large datasets and training artifacts are intentionally excluded from version co
 
 Ignored locations include:
 - `.artifacts/`
-- `PUBCHEM/`
-- `notebooks/PUBCHEM/`
+- `notebooks/datasets/`
 
 Keep experimental outputs in ignored paths to avoid inflating repository history.
 
