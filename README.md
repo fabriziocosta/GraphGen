@@ -16,7 +16,11 @@ This document focuses on the graph-generator orchestration layer. It explains ho
 
 [`docs/2_CONDITIONAL_NODE_FIELD_README.md`](docs/2_CONDITIONAL_NODE_FIELD_README.md)
 
-This is the main conceptual and modeling document. It explains the Conditional Node Field formulation itself, including the score-matching objective, the stationary energy-based interpretation, the conditioning pathway, the vector-versus-token conditioning interface used by cross-attention, and the iterative sampling dynamics. The dedicated discussion of target guidance is separated into its own document.
+This is the main conceptual and modeling document. It explains the Conditional Node Field formulation itself, including the stationary energy-based interpretation, the conditioning pathway, the vector-versus-token conditioning interface used by cross-attention, and the architectural design choices.
+
+[`docs/2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](docs/2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md)
+
+This companion document covers the operational behavior of the node model. It explains the auxiliary losses, the full training objective, sampling updates, inference-time projection, main hyperparameters, and the interpretation of logged training metrics.
 
 [`docs/3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](docs/3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
 
@@ -66,6 +70,7 @@ NodeField/
 ├── docs/
 │   ├── 1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md
 │   ├── 2_CONDITIONAL_NODE_FIELD_README.md
+│   ├── 2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md
 │   ├── 3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md
 │   ├── 4_TARGET_GUIDANCE_README.md
 │   ├── 5_MAIN_CLASS_INTERFACES_README.md
