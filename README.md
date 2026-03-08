@@ -44,7 +44,7 @@ This extension document covers the synthetic-graph support layer. It points to t
 
 [`docs/extensions/demo/README.md`](docs/extensions/demo/README.md)
 
-This extension document covers the demo-oriented helper layer. It points to the reusable notebook pipeline helpers, visualization utilities, and saved-generator persistence helpers used in the maintained example notebooks.
+This extension document covers the demo-oriented helper layer. It points to the reusable notebook pipeline helpers, visualization utilities, and checkpoint helpers used in the maintained example notebooks. Saved-generator serialization now lives in the core [`conditional_node_field_graph_generator/persistence.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/persistence.py) module.
 
 The repository includes:
 - A trainable conditional node generator.

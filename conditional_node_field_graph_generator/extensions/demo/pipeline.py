@@ -26,6 +26,7 @@ from ...conditional_node_field_generator import ConditionalNodeFieldGenerator
 from ...conditional_node_field_graph_generator import ConditionalNodeFieldGraphDecoder, ConditionalNodeFieldGraphGenerator
 from ..molecular import PubChemLoader, SupervisedDataSetLoader, draw_molecules
 from ..synthetic import ArtificialGraphDatasetConstructor
+from .storage import describe_resume_checkpoint, find_latest_checkpoint
 from .visualization import offset_neg_graphs, plot_networkx_graphs, select_pos_neg
 
 
@@ -295,3 +296,21 @@ def build_graph_generator(
         feasibility_failure_mode=feasibility_failure_mode,
         verbose=verbose,
     )
+
+
+def fit_graph_generator(
+    graph_generator,
+    train_graphs,
+    targets=None,
+    ckpt_path=None,
+    resume_latest_checkpoint=False,
+    checkpoint_root=None,
+):
+    if ckpt_path is not None and resume_latest_checkpoint:
+        raise ValueError("Provide either ckpt_path or resume_latest_checkpoint, not both.")
+    resolved_ckpt_path = ckpt_path
+    if resume_latest_checkpoint:
+        resolved_ckpt_path = find_latest_checkpoint(checkpoint_root=checkpoint_root)
+    describe_resume_checkpoint(resolved_ckpt_path)
+    graph_generator.fit(train_graphs, targets=targets, ckpt_path=resolved_ckpt_path)
+    return graph_generator

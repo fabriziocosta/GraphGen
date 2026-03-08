@@ -1,17 +1,10 @@
 """Demo-oriented helpers for notebook workflows."""
 
-from .pipeline import build_dataset, build_graph_generator, prepare_experiment
-from .storage import (
-    describe_resume_checkpoint,
-    find_latest_checkpoint,
-    list_saved_graph_generators,
-    list_training_checkpoints,
-    load_graph_generator,
-    save_graph_generator,
-)
+from ...persistence import list_saved_graph_generators, load_graph_generator, save_graph_generator
+from .pipeline import build_dataset, build_graph_generator, fit_graph_generator, prepare_experiment
+from .storage import describe_resume_checkpoint, find_latest_checkpoint, list_training_checkpoints
 from .visualization import (
     compare_real_vs_generated,
-    fit_graph_generator,
     infer_display_mode,
     offset_neg_graphs,
     plot_label_histogram_alignment,

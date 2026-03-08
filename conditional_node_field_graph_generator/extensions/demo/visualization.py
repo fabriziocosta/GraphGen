@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 
 from ..molecular import draw_molecules
-from .storage import describe_resume_checkpoint, find_latest_checkpoint
 
 try:
     from IPython.display import display
@@ -292,24 +291,6 @@ def run_label_histogram_analysis(graph_generator, graphs, n_compare=5):
     summary = summarize_label_histogram_alignment(graph_generator, graphs, n_compare=n_compare)
     plot_label_histogram_alignment(summary)
     return summary
-
-
-def fit_graph_generator(
-    graph_generator,
-    train_graphs,
-    targets=None,
-    ckpt_path=None,
-    resume_latest_checkpoint=False,
-    checkpoint_root=None,
-):
-    if ckpt_path is not None and resume_latest_checkpoint:
-        raise ValueError("Provide either ckpt_path or resume_latest_checkpoint, not both.")
-    resolved_ckpt_path = ckpt_path
-    if resume_latest_checkpoint:
-        resolved_ckpt_path = find_latest_checkpoint(checkpoint_root=checkpoint_root)
-    describe_resume_checkpoint(resolved_ckpt_path)
-    graph_generator.fit(train_graphs, targets=targets, ckpt_path=resolved_ckpt_path)
-    return graph_generator
 
 
 def _normalized_counter(values):

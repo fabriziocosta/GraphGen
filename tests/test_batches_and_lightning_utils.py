@@ -12,16 +12,12 @@ from conditional_node_field_graph_generator.conditional_node_field_generator imp
     MetricsLogger,
     NodeGenerationBatch,
 )
-from conditional_node_field_graph_generator.extensions.demo.storage import (
-    find_latest_checkpoint,
-    save_graph_generator,
-)
-from conditional_node_field_graph_generator.extensions.demo.visualization import (
-    fit_graph_generator,
-)
+from conditional_node_field_graph_generator.extensions.demo.pipeline import fit_graph_generator
+from conditional_node_field_graph_generator.extensions.demo.storage import find_latest_checkpoint
 from conditional_node_field_graph_generator.metrics_visualization import (
     plot_metrics,
 )
+from conditional_node_field_graph_generator.persistence import save_graph_generator
 from conditional_node_field_graph_generator.runtime_utils import run_trainer_fit
 from conditional_node_field_graph_generator.training_policy import (
     format_restored_checkpoint_summary,

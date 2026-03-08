@@ -4,7 +4,7 @@ This file tracks the work that is still genuinely open after the cleanup passes.
 
 ## Remaining Refactors
 
-- Decide whether the root-level synthetic implementation files should remain or be folded fully under `extensions/synthetic/`:
+- Decide whether to keep the root-level synthetic compatibility wrappers or remove them after one more migration pass:
   - [`synthetic_graph_primitives.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/synthetic_graph_primitives.py)
   - [`synthetic_graph_datasets.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/synthetic_graph_datasets.py)
   - [`graph_composition.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/graph_composition.py)
@@ -12,8 +12,6 @@ This file tracks the work that is still genuinely open after the cleanup passes.
 ## Notebook / Demo Follow-Up
 
 - Clean notebook prose/comments and saved outputs that still refer to historical helper locations or outdated traceback paths.
-
-- Decide whether saved-generator persistence helpers should remain in [`extensions/demo/storage.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/demo/storage.py) or move to a more general non-notebook utility module.
 
 ## Tests
 
