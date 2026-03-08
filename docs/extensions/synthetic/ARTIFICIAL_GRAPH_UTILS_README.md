@@ -5,6 +5,8 @@ This document describes the artificial-graph and synthetic-dataset helpers that 
 These utilities are not part of the core NodeField model. New code should access them through the synthetic extension namespace:
 - [`conditional_node_field_graph_generator/extensions/synthetic/__init__.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/synthetic/__init__.py)
 
+The root-level implementation files remain available for compatibility, but they should be treated as transitional rather than primary public entry points.
+
 The implementation currently lives across:
 - [`synthetic_graph_primitives.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/synthetic_graph_primitives.py)
 - [`synthetic_graph_datasets.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/synthetic_graph_datasets.py)

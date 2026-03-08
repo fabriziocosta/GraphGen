@@ -1,6 +1,6 @@
 """Molecule/graph conversion helpers."""
 
-from ...molecular_graph_utils import (
+from ._impl import (
     molecule_to_networkx,
     networkx_to_molecule,
     nx_to_rdkit,

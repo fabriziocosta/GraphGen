@@ -42,6 +42,10 @@ This extension document covers the chemistry-specific support layer. It points t
 
 This extension document covers the synthetic-graph support layer. It points to the artificial graph primitives, synthetic dataset builders, and graph-composition helpers used mainly in demos and tests.
 
+[`docs/extensions/demo/README.md`](docs/extensions/demo/README.md)
+
+This extension document covers the demo-oriented helper layer. It points to the reusable notebook pipeline helpers, visualization utilities, and saved-generator persistence helpers used in the maintained example notebooks.
+
 The repository includes:
 - A trainable conditional node generator.
 - A graph-level generator that handles encoding, supervision construction, and decoding.
@@ -55,9 +59,9 @@ NodeField/
 ├── conditional_node_field_graph_generator/
 │   ├── conditional_node_field_generator.py
 │   ├── conditional_node_field_graph_generator.py
+│   ├── extensions/
 │   ├── metrics_collection.py
 │   ├── metrics_visualization.py
-│   ├── support.py
 │   └── training_policy.py
 ├── docs/
 │   ├── 1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md
@@ -66,6 +70,8 @@ NodeField/
 │   ├── 4_TARGET_GUIDANCE_README.md
 │   ├── 5_MAIN_CLASS_INTERFACES_README.md
 │   ├── extensions/
+│   │   ├── demo/
+│   │   │   └── README.md
 │   │   ├── molecular/
 │   │   │   └── README.md
 │   │   └── synthetic/
@@ -75,8 +81,7 @@ NodeField/
 │   ├── demo.ipynb
 │   ├── demo_chem.ipynb
 │   ├── demo_optimization.ipynb
-│   ├── demo_zinc.ipynb
-│   └── notebook_utils.py
+│   └── demo_zinc.ipynb
 ├── tests/
 ├── .artifacts/
 └── README.md
@@ -93,14 +98,14 @@ Key paths:
 - `conditional_node_field_graph_generator/conditional_node_field_graph_generator.py`
   High-level graph generator, supervision assembly, decode orchestration, and graph-level sampling helpers.
 
-- `conditional_node_field_graph_generator/support.py`
-  Shared utilities, runtime helpers, and artificial graph/data constructors.
+- `conditional_node_field_graph_generator/extensions/`
+  Optional extension layers for demo workflows, molecular graph tooling, and synthetic/artificial graph utilities.
 
 - `docs/`
   Technical documentation for the model, public interfaces, graph generator, decoder, extension layers, and local development conventions.
 
 - `notebooks/`
-  Demo and experiment notebooks, plus notebook-specific helper code.
+  Demo and experiment notebooks. Reusable notebook support logic is being moved into `extensions/demo`.
 
 - `tests/`
   Pytest suite for generator behavior and supporting modules.
@@ -178,5 +183,5 @@ Keep experimental outputs in ignored paths to avoid inflating repository history
 
 Notebook execution flow is kept lean by design:
 - Prefer assigning variables and calling functions from `.py` modules.
-- Place reusable notebook logic in helper modules (for example `notebooks/notebook_utils.py`).
+- Place reusable notebook logic in extension modules, especially `conditional_node_field_graph_generator/extensions/demo/`.
 - Clear notebook outputs before committing.

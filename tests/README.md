@@ -114,14 +114,14 @@ pytest -q -k interpolate
 - Some tests rely on bundled local assay files under `notebooks/datasets/PUBCHEM/`.
 - The molecular tests are still lightweight, but they can be slower than the pure unit tests because they parse local SDF files.
 - Notebook behavior is tested only through selected helper functions, not by replaying full notebooks.
-- Compatibility layers such as [`conditional_node_field_graph_generator/support.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/support.py) are still covered where they remain part of the public surface.
+- The remaining tests increasingly target the extension and core modules directly rather than transitional compatibility layers.
 
 ## Intended Role Of This Directory
 
 Use this test suite to validate:
 - refactors of the core model/orchestration code
 - changes to CFG or separate guidance behavior
-- changes to utility wrappers and compatibility layers
+- changes to extension helper modules and their public utility functions
 - changes to the molecular extension helpers
 
 Do not treat it as proof that:

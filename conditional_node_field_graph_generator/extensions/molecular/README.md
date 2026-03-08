@@ -7,4 +7,4 @@ Main entry points:
 - [`datasets.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/molecular/datasets.py)
 - [`visualization.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/molecular/visualization.py)
 
-Legacy compatibility remains in [`molecular_graph_utils.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/molecular_graph_utils.py), but new code should import from `conditional_node_field_graph_generator.extensions.molecular`.
+New code should import from `conditional_node_field_graph_generator.extensions.molecular`.

@@ -1,6 +1,6 @@
 """Molecule visualization helpers."""
 
-from ...molecular_graph_utils import (
+from ._impl import (
     compounds_to_image,
     draw_molecules,
     molecule_graphs_to_grid_image,

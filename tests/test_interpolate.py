@@ -6,7 +6,9 @@ from conditional_node_field_graph_generator.conditional_node_field_graph_generat
     _interpolate_integer_series,
 )
 from conditional_node_field_graph_generator.conditional_node_field_generator import GraphConditioningBatch
-from notebooks.notebook_utils import sample_positive_endpoint_pair
+from conditional_node_field_graph_generator.extensions.demo.visualization import (
+    sample_positive_endpoint_pair,
+)
 
 
 class _FakeGraphGenerator:

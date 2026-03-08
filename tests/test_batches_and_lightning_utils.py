@@ -12,10 +12,17 @@ from conditional_node_field_graph_generator.conditional_node_field_generator imp
     MetricsLogger,
     NodeGenerationBatch,
 )
-from conditional_node_field_graph_generator.support import run_trainer_fit
+from conditional_node_field_graph_generator.extensions.demo.storage import (
+    find_latest_checkpoint,
+    save_graph_generator,
+)
+from conditional_node_field_graph_generator.extensions.demo.visualization import (
+    fit_graph_generator,
+)
 from conditional_node_field_graph_generator.metrics_visualization import (
     plot_metrics,
 )
+from conditional_node_field_graph_generator.runtime_utils import run_trainer_fit
 from conditional_node_field_graph_generator.training_policy import (
     format_restored_checkpoint_summary,
 )
@@ -123,6 +130,93 @@ def test_run_trainer_fit_suppresses_lightning_worker_warnings():
 
     assert trainer.called is True
     assert caught == []
+
+
+def test_find_latest_checkpoint_prefers_last_ckpt(tmp_path):
+    root = tmp_path / "checkpoints"
+    older = root / "run_old"
+    newer = root / "run_new"
+    older.mkdir(parents=True)
+    newer.mkdir(parents=True)
+    (older / "best-001.ckpt").write_text("old")
+    (newer / "best-003.ckpt").write_text("best")
+    (newer / "last.ckpt").write_text("last")
+
+    latest = find_latest_checkpoint(checkpoint_root=root)
+
+    assert latest is not None
+    assert latest.endswith("last.ckpt")
+
+
+class _FitRecorder:
+    def __init__(self):
+        self.calls = []
+
+    def fit(self, graphs, targets=None, ckpt_path=None):
+        self.calls.append(
+            {
+                "graphs": graphs,
+                "targets": targets,
+                "ckpt_path": ckpt_path,
+            }
+        )
+
+
+def test_fit_graph_generator_resumes_from_latest_checkpoint(tmp_path):
+    recorder = _FitRecorder()
+    checkpoint_root = tmp_path / "checkpoints"
+    run_dir = checkpoint_root / "run_a"
+    run_dir.mkdir(parents=True)
+    (run_dir / "last.ckpt").write_text("checkpoint")
+
+    result = fit_graph_generator(
+        recorder,
+        train_graphs=["g1", "g2"],
+        targets=[1, 0],
+        resume_latest_checkpoint=True,
+        checkpoint_root=checkpoint_root,
+    )
+
+    assert result is recorder
+    assert recorder.calls[0]["graphs"] == ["g1", "g2"]
+    assert recorder.calls[0]["targets"] == [1, 0]
+    assert recorder.calls[0]["ckpt_path"].endswith("last.ckpt")
+
+
+class _SaveableGenerator:
+    def __init__(self, training_size=None):
+        self.training_graph_conditioning_ = (
+            type("_Conditioning", (), {"__len__": lambda self: training_size})()
+            if training_size is not None
+            else None
+        )
+
+
+def test_save_graph_generator_includes_training_set_size_in_filename(tmp_path):
+    generator = _SaveableGenerator(training_size=42)
+
+    filename = save_graph_generator(
+        generator,
+        model_name="demo-chem",
+        model_dir=tmp_path,
+    )
+
+    assert filename.startswith("demo-chem-n42-")
+    assert filename.endswith(".pkl")
+
+
+def test_save_graph_generator_omits_training_set_size_when_unavailable(tmp_path):
+    generator = _SaveableGenerator(training_size=None)
+
+    filename = save_graph_generator(
+        generator,
+        model_name="demo-chem",
+        model_dir=tmp_path,
+    )
+
+    assert filename.startswith("demo-chem-")
+    assert "demo-chem-n" not in filename
+    assert filename.endswith(".pkl")
 
 
 def test_build_train_val_subsets_reuses_single_example_for_train_and_val():

@@ -1,8 +1,8 @@
 ## Molecular Graph Utilities
 
-This module centralizes all local operations related to molecular graphs in [`molecular_graph_utils.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/molecular_graph_utils.py).
+This document describes the molecular-graph utilities now implemented directly under the molecular extension.
 
-It is intended to replace the previous dependency on `coco-grape` for:
+It is intended to replace the previous external chemistry-helper dependency for:
 - PubChem assay loading
 - molecule drawing
 - ZINC download, caching, and conversion
@@ -10,8 +10,11 @@ It is intended to replace the previous dependency on `coco-grape` for:
 
 The implementation keeps the older PubChem loader and supervised-loader interfaces available locally so existing notebook flows can continue to work with minimal change.
 
-For new code, prefer the extension namespace:
+For all maintained code, use the extension namespace:
 - [`extensions/molecular/__init__.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/molecular/__init__.py)
+- [`extensions/molecular/conversion.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/molecular/conversion.py)
+- [`extensions/molecular/datasets.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/molecular/datasets.py)
+- [`extensions/molecular/visualization.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/molecular/visualization.py)
 
 ## Main Responsibilities
 
@@ -53,7 +56,7 @@ These helpers render molecular graphs using RDKit instead of the previous extern
   Builds a grid image from molecular NetworkX graphs.
 
 - `nx_to_image(graphs, n_graphs_per_line=5, size=250, title_key=None, titles=None)`
-  Compatibility helper matching the older `coco_grape` drawing API.
+  Lightweight compatibility helper for notebook-oriented molecule drawing.
 
 - `draw_molecules(graphs, titles=None, num=None, n_graphs_per_line=7, size=7, ...)`
   Displays batches of molecular graphs.
@@ -71,7 +74,7 @@ The module includes a local copy of the older PubChem loading workflow.
   Resolves the local directory that stores assay SDF files.
 
 - `PubChemLoader`
-  Local replacement for the older `coco_grape.data_loader.mol.mol_loader.PubChemLoader`.
+  Local replacement for the older external PubChem loader used by the notebooks.
 
 Important methods:
 - `get_assay_description(assay_id)`
@@ -150,15 +153,6 @@ Workflow:
 
 This is the backend used by the maintained ZINC notebook flow.
 
-## Compatibility Layer
-
-To avoid breaking legacy notebook imports immediately, this repository also exposes thin local compatibility shims under:
-- [`coco_grape/data_loader/loader.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/coco_grape/data_loader/loader.py)
-- [`coco_grape/data_loader/mol/mol_loader.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/coco_grape/data_loader/mol/mol_loader.py)
-- [`coco_grape/visualizer/mol_display.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/coco_grape/visualizer/mol_display.py)
-
-These local wrappers forward the old import paths to this module.
-
 ## Intended Scope
 
 Use this module for:
@@ -166,7 +160,7 @@ Use this module for:
 - molecular notebook visualization
 - PubChem assay ingestion
 - ZINC preparation and caching
-- preserving compatibility with older molecule notebook code
+- supporting the maintained molecule notebook code through the local extension API
 
 Do not use it for:
 - generic non-molecular graph rendering

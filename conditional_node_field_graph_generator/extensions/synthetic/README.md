@@ -7,4 +7,4 @@ Main entry points:
 - [`datasets.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/synthetic/datasets.py)
 - [`composition.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/extensions/synthetic/composition.py)
 
-Legacy compatibility remains in [`support.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/support.py), but new code should import from `conditional_node_field_graph_generator.extensions.synthetic`.
+New code should import from `conditional_node_field_graph_generator.extensions.synthetic`.

@@ -1,6 +1,6 @@
 """Chemistry dataset helpers for PubChem and ZINC."""
 
-from ...molecular_graph_utils import (
+from ._impl import (
     DEFAULT_ZINC_TARGET_COLUMNS,
     PUBCHEM_FILENAME_TEMPLATE,
     ZINC_250K_URL,

@@ -17,9 +17,6 @@ Primary entry points live under:
 Detailed module documentation:
 - [`docs/extensions/synthetic/ARTIFICIAL_GRAPH_UTILS_README.md`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/docs/extensions/synthetic/ARTIFICIAL_GRAPH_UTILS_README.md)
 
-Compatibility layer:
-- [`conditional_node_field_graph_generator/support.py`](/Users/fabriziocosta/Resilio%20Sync/Sync/Projects/GraphGen/conditional_node_field_graph_generator/support.py)
-
 Boundary:
 - this extension is not required for the core NodeField model
 - it exists for demos, artificial datasets, and notebook-oriented experimentation
