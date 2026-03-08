@@ -6,11 +6,29 @@ The framework uses two distinct vectorization processes: one to derive node embe
 
 Training is supplemented by auxiliary objectives, including node-degree prediction, node-label prediction, edge-label prediction, and edge-existence prediction. The resulting structural and semantic predictions are passed to a decoder that reconstructs the final graph through constrained combinatorial optimization, formulated as an integer programming problem that reconciles predicted degrees and edge probabilities in a globally coherent manner.
 
-Technical documentation lives under [`docs/`](docs/):
-- [`docs/CONDITIONAL_NODE_FIELD_README.md`](docs/CONDITIONAL_NODE_FIELD_README.md): Conditional Node Field internals and training/sampling behavior.
-- [`docs/CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md`](docs/CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md): graph-generator orchestration architecture.
-- [`docs/CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](docs/CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md): decoder and constraint-solver details.
-- [`docs/PREFERENCES.md`](docs/PREFERENCES.md): local documentation and notebook conventions.
+## Documentation
+
+The main technical documentation lives under [`docs/`](docs/). The documents are split by responsibility so that the modeling details, orchestration layer, decoder logic, and API surface can each be read independently.
+
+[`docs/CONDITIONAL_NODE_FIELD_README.md`](docs/CONDITIONAL_NODE_FIELD_README.md)
+
+This is the main conceptual and modeling document. It explains the Conditional Node Field formulation itself, including the score-matching objective, the stationary energy-based interpretation, the conditioning pathway, the iterative sampling dynamics, and the distinction between classifier-free guidance and separate post-hoc guidance.
+
+[`docs/MAIN_CLASS_INTERFACES_README.md`](docs/MAIN_CLASS_INTERFACES_README.md)
+
+This is the interface reference for the main public classes. It summarizes the constructor and workflow methods for the batch dataclasses, the node generator, the graph decoder, and the graph generator, and it explains what the main parameters mean together with the practical effect of increasing or decreasing them.
+
+[`docs/CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md`](docs/CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md)
+
+This document focuses on the graph-generator orchestration layer. It explains how raw graphs are vectorized, how supervision channels are assembled, how the node generator and decoder are coordinated, how graph-level sampling and interpolation work, and how feasibility filtering and graph-level guidance are exposed.
+
+[`docs/CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](docs/CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
+
+This document covers the decoder and constraint-solving stage. It explains how node-level predictions are converted into final `networkx` graphs, how edge probabilities and predicted degrees are reconciled, how connectivity constraints are enforced, and how the ILP-based adjacency projection behaves.
+
+[`docs/PREFERENCES.md`](docs/PREFERENCES.md)
+
+This is a local development conventions file. It covers documentation and notebook preferences rather than the model itself.
 
 The repository includes:
 - A trainable conditional node generator.

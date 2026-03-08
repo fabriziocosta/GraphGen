@@ -5,8 +5,23 @@ This document explains the `ConditionalNodeFieldGenerator` implemented in this r
 The implementation lives primarily in
 [`../conditional_node_field_graph_generator/conditional_node_field_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_generator.py).
 
-For a reference-style summary of the main public classes, signatures, parameters, and tuning effects, see
-[`MAIN_CLASS_INTERFACES_README.md`](MAIN_CLASS_INTERFACES_README.md).
+## Documentation Map
+
+This document is the main conceptual reference for the Conditional Node Field model itself: what it is optimizing, how conditioning enters, how sampling works, and how CFG and separate post-hoc guidance fit into the generator.
+
+The rest of the documentation is organized around the other layers of the stack:
+
+[`MAIN_CLASS_INTERFACES_README.md`](MAIN_CLASS_INTERFACES_README.md)
+
+This is the API reference. It collects the main public classes in one place, shows their primary constructors and workflow methods, explains the meaning of each important parameter, and summarizes the practical effect of increasing or decreasing those parameters. Use it when you want a user-facing interface guide rather than the modeling details.
+
+[`CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md`](CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md)
+
+This document explains the end-to-end orchestration layer built around the node generator. It focuses on how raw graphs are vectorized, how supervision batches are assembled, how the node generator and decoder are coordinated, how graph-level sampling works, and how feasibility filtering and guidance are exposed at the graph-generation level.
+
+[`CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
+
+This document explains the reconstruction stage that turns node-level predictions into final `networkx` graphs. It focuses on the decoder inputs and outputs, the role of edge-probability matrices, how degree and connectivity constraints are enforced, and how the ILP-based adjacency projection behaves.
 
 ## Overview
 
