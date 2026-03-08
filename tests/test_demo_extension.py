@@ -105,6 +105,49 @@ def test_fit_graph_generator_rejects_conflicting_resume_arguments():
         )
 
 
+def test_fit_graph_generator_falls_back_when_latest_checkpoint_is_incompatible(tmp_path, capsys):
+    checkpoint_root = tmp_path / "checkpoints"
+    run_dir = checkpoint_root / "run_a"
+    run_dir.mkdir(parents=True)
+    checkpoint_path = run_dir / "last.ckpt"
+    checkpoint_path.write_text("checkpoint")
+
+    class _Recorder:
+        def __init__(self):
+            self.calls = []
+
+        def fit(self, graphs, targets=None, ckpt_path=None):
+            self.calls.append(
+                {
+                    "graphs": graphs,
+                    "targets": targets,
+                    "ckpt_path": ckpt_path,
+                }
+            )
+            if ckpt_path is not None:
+                raise RuntimeError(
+                    "Error(s) in loading state_dict for ConditionalNodeFieldModule:\n\tsize mismatch for layernorm_in.weight"
+                )
+
+    recorder = _Recorder()
+
+    result = fit_graph_generator(
+        recorder,
+        train_graphs=["g1", "g2"],
+        targets=[1, 0],
+        resume_latest_checkpoint=True,
+        checkpoint_root=checkpoint_root,
+    )
+
+    assert result is recorder
+    assert recorder.calls == [
+        {"graphs": ["g1", "g2"], "targets": [1, 0], "ckpt_path": str(checkpoint_path.resolve())},
+        {"graphs": ["g1", "g2"], "targets": [1, 0], "ckpt_path": None},
+    ]
+    output = capsys.readouterr().out
+    assert "Latest checkpoint is incompatible" in output
+
+
 class _FakeCompareGenerator:
     def graph_encode(self, graphs):
         return list(graphs)

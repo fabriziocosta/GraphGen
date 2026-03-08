@@ -312,5 +312,25 @@ def fit_graph_generator(
     if resume_latest_checkpoint:
         resolved_ckpt_path = find_latest_checkpoint(checkpoint_root=checkpoint_root)
     describe_resume_checkpoint(resolved_ckpt_path)
-    graph_generator.fit(train_graphs, targets=targets, ckpt_path=resolved_ckpt_path)
+    try:
+        graph_generator.fit(train_graphs, targets=targets, ckpt_path=resolved_ckpt_path)
+    except RuntimeError as exc:
+        if not (resume_latest_checkpoint and resolved_ckpt_path is not None and _is_incompatible_resume_error(exc)):
+            raise
+        print(
+            "Latest checkpoint is incompatible with the current generator configuration; "
+            "retrying from scratch."
+        )
+        print(Path(resolved_ckpt_path).expanduser().resolve())
+        graph_generator.fit(train_graphs, targets=targets, ckpt_path=None)
     return graph_generator
+
+
+def _is_incompatible_resume_error(exc: RuntimeError) -> bool:
+    message = str(exc)
+    return (
+        "Error(s) in loading state_dict" in message
+        or "Missing key(s) in state_dict" in message
+        or "Unexpected key(s) in state_dict" in message
+        or "size mismatch for" in message
+    )
