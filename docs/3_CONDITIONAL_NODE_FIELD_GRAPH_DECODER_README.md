@@ -8,7 +8,7 @@ The implementation lives in [`../conditional_node_field_graph_generator/conditio
 - `ConditionalNodeFieldGraphGenerator._decode_*`
 
 For a parameter-by-parameter interface reference, see
-[`MAIN_CLASS_INTERFACES_README.md`](MAIN_CLASS_INTERFACES_README.md).
+[`4_MAIN_CLASS_INTERFACES_README.md`](4_MAIN_CLASS_INTERFACES_README.md).
 
 ## Scope
 

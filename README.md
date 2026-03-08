@@ -10,19 +10,19 @@ Training is supplemented by auxiliary objectives, including node-degree predicti
 
 The main technical documentation lives under [`docs/`](docs/). The documents are split by responsibility so that the modeling details, orchestration layer, decoder logic, and API surface can each be read independently.
 
-[`docs/CONDITIONAL_NODE_FIELD_README.md`](docs/CONDITIONAL_NODE_FIELD_README.md)
+[`docs/2_CONDITIONAL_NODE_FIELD_README.md`](docs/2_CONDITIONAL_NODE_FIELD_README.md)
 
 This is the main conceptual and modeling document. It explains the Conditional Node Field formulation itself, including the score-matching objective, the stationary energy-based interpretation, the conditioning pathway, the iterative sampling dynamics, and the distinction between classifier-free guidance and separate post-hoc guidance.
 
-[`docs/MAIN_CLASS_INTERFACES_README.md`](docs/MAIN_CLASS_INTERFACES_README.md)
+[`docs/4_MAIN_CLASS_INTERFACES_README.md`](docs/4_MAIN_CLASS_INTERFACES_README.md)
 
 This is the interface reference for the main public classes. It summarizes the constructor and workflow methods for the batch dataclasses, the node generator, the graph decoder, and the graph generator, and it explains what the main parameters mean together with the practical effect of increasing or decreasing them.
 
-[`docs/CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md`](docs/CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md)
+[`docs/1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md`](docs/1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md)
 
 This document focuses on the graph-generator orchestration layer. It explains how raw graphs are vectorized, how supervision channels are assembled, how the node generator and decoder are coordinated, how graph-level sampling and interpolation work, and how feasibility filtering and graph-level guidance are exposed.
 
-[`docs/CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](docs/CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
+[`docs/3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](docs/3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
 
 This document covers the decoder and constraint-solving stage. It explains how node-level predictions are converted into final `networkx` graphs, how edge probabilities and predicted degrees are reconciled, how connectivity constraints are enforced, and how the ILP-based adjacency projection behaves.
 
@@ -38,19 +38,57 @@ The repository includes:
 
 ## Project Layout
 
+```text
+GraphGen/
+├── conditional_node_field_graph_generator/
+│   ├── conditional_node_field_generator.py
+│   ├── conditional_node_field_graph_generator.py
+│   ├── metrics_collection.py
+│   ├── metrics_visualization.py
+│   ├── support.py
+│   └── training_policy.py
+├── docs/
+│   ├── 1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md
+│   ├── 2_CONDITIONAL_NODE_FIELD_README.md
+│   ├── 3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md
+│   ├── 4_MAIN_CLASS_INTERFACES_README.md
+│   └── PREFERENCES.md
+├── notebooks/
+│   ├── demo.ipynb
+│   ├── demo_chem.ipynb
+│   ├── demo_optimization.ipynb
+│   ├── demo_zinc.ipynb
+│   └── notebook_utils.py
+├── tests/
+├── .artifacts/
+└── README.md
+```
+
+Key paths:
+
 - `conditional_node_field_graph_generator/`
-  Core package:
-  - `conditional_node_field_generator.py`: Conditional Node Field model, batch dataclasses, and shared NN/callback blocks.
-  - `conditional_node_field_graph_generator.py`: graph generator/decoder orchestration and interpolation helpers.
-  - `support.py`: runtime decorators/helpers plus artificial graph dataset constructors.
-- `notebooks/`
-  Experiment and demo notebooks, plus notebook-specific helpers in `notebook_utils.py`.
-- `tests/`
-  Pytest suite for generator behavior and helper modules.
+  Core package with the Conditional Node Field model, graph-generator orchestration, decoder support, metrics helpers, and training utilities.
+
+- `conditional_node_field_graph_generator/conditional_node_field_generator.py`
+  Node-level generator implementation, batch dataclasses, sampling logic, and support for CFG and separate post-hoc guidance.
+
+- `conditional_node_field_graph_generator/conditional_node_field_graph_generator.py`
+  High-level graph generator, supervision assembly, decode orchestration, and graph-level sampling helpers.
+
+- `conditional_node_field_graph_generator/support.py`
+  Shared utilities, runtime helpers, and artificial graph/data constructors.
+
 - `docs/`
-  Architecture notes, decoder details, Conditional Node Field internals, and local development preferences.
+  Technical documentation for the model, public interfaces, graph generator, decoder, and local development conventions.
+
+- `notebooks/`
+  Demo and experiment notebooks, plus notebook-specific helper code.
+
+- `tests/`
+  Pytest suite for generator behavior and supporting modules.
+
 - `.artifacts/`
-  Local artifacts (checkpoints/models); ignored by git.
+  Local checkpoints and generated artifacts. This directory is ignored by git.
 
 ## Installation
 
@@ -87,7 +125,7 @@ By default, `.sample(...)` reuses cached graph-level conditioning rows from the 
 
 When guidance targets are available, sampling can also use classifier-free conditioning through
 `desired_target` and `guidance_scale`. The detailed mechanics are documented in
-[`docs/CONDITIONAL_NODE_FIELD_README.md`](docs/CONDITIONAL_NODE_FIELD_README.md).
+[`docs/2_CONDITIONAL_NODE_FIELD_README.md`](docs/2_CONDITIONAL_NODE_FIELD_README.md).
 
 Notebook examples:
 - `notebooks/demo.ipynb`

@@ -6,9 +6,9 @@ Implementation anchors:
 
 - [`../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py)
 - [`../conditional_node_field_graph_generator/conditional_node_field_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_generator.py)
-- [`CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
-- [`CONDITIONAL_NODE_FIELD_README.md`](CONDITIONAL_NODE_FIELD_README.md)
-- [`MAIN_CLASS_INTERFACES_README.md`](MAIN_CLASS_INTERFACES_README.md)
+- [`3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
+- [`2_CONDITIONAL_NODE_FIELD_README.md`](2_CONDITIONAL_NODE_FIELD_README.md)
+- [`4_MAIN_CLASS_INTERFACES_README.md`](4_MAIN_CLASS_INTERFACES_README.md)
 
 ## Scope
 
@@ -108,7 +108,7 @@ It predicts:
 - optional edge probabilities,
 - optional edge labels.
 
-The internal Conditional Node Field mechanics are described in [`CONDITIONAL_NODE_FIELD_README.md`](CONDITIONAL_NODE_FIELD_README.md).
+The internal Conditional Node Field mechanics are described in [`2_CONDITIONAL_NODE_FIELD_README.md`](2_CONDITIONAL_NODE_FIELD_README.md).
 
 ### 4. Graph Decoder
 
@@ -121,7 +121,7 @@ Its most important job is structural reconstruction:
 - enforce structural consistency with a solver,
 - attach node and edge labels according to the supervision plan.
 
-The decoder and solver details are documented in [`CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md).
+The decoder and solver details are documented in [`3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md).
 
 ## Data Model
 
@@ -473,7 +473,7 @@ public APIs so the semantics stay explicit:
   `desired_target` plus `guidance_scale`.
 - Post-hoc guidance uses the dedicated classifier-guided and regression-guided decode/sample methods.
 
-They are documented in more detail in `CONDITIONAL_NODE_FIELD_README.md`.
+They are documented in more detail in `2_CONDITIONAL_NODE_FIELD_README.md`.
 
 ### Explicit Failure Modes
 
@@ -562,7 +562,7 @@ For someone new to the codebase, the fastest way to build accurate context is:
 
 1. [`../README.md`](../README.md)
 2. this file
-3. [`CONDITIONAL_NODE_FIELD_README.md`](CONDITIONAL_NODE_FIELD_README.md)
-4. [`CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
+3. [`2_CONDITIONAL_NODE_FIELD_README.md`](2_CONDITIONAL_NODE_FIELD_README.md)
+4. [`3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
 5. [`../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py)
 6. [`../conditional_node_field_graph_generator/conditional_node_field_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_generator.py)
