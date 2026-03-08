@@ -5,6 +5,9 @@ This document explains the `ConditionalNodeFieldGenerator` implemented in this r
 The implementation lives primarily in
 [`../conditional_node_field_graph_generator/conditional_node_field_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_generator.py).
 
+For a reference-style summary of the main public classes, signatures, parameters, and tuning effects, see
+[`MAIN_CLASS_INTERFACES_README.md`](MAIN_CLASS_INTERFACES_README.md).
+
 ## Overview
 
 The maintained node generator in this repository is:
@@ -720,9 +723,34 @@ where:
 
 This can improve diversity at the cost of noisier trajectories.
 
+## Guidance Support
+
+The maintained implementation supports both guidance routes:
+
+- classifier-free guidance (CFG) over explicit target-conditioning channels,
+- separate post-hoc guidance through an auxiliary classifier or regressor.
+
+They are both first-class features in this repository, but they are intentionally exposed through
+different APIs because they operate differently at training and sampling time.
+
+### What Each Mode Means
+
+Classifier-free guidance trains the generator itself to work with and without the requested target
+conditioning, then mixes those two score evaluations during sampling.
+
+Separate post-hoc guidance leaves the generator sampling model unchanged and instead adds a gradient
+from a separately trained predictor during sampling.
+
+### Why Both Exist
+
+CFG is useful when the target should be part of the generator's native conditioning interface.
+
+Separate post-hoc guidance is useful when a pretrained generator should later be steered toward
+different downstream classification or regression objectives without retraining the generator.
+
 ## Classifier-Free Conditioning
 
-The maintained implementation supports classifier-free guidance over explicit target-conditioning channels.
+The first supported guidance route is classifier-free guidance over explicit target-conditioning channels.
 
 This is not limited to classifier-free guidance. In the diffusion and score-based
 literature, the alternative post-hoc route is usually called `classifier guidance`: first train the generative
@@ -873,7 +901,7 @@ In the code, this is implemented inside the Conditional Node Field sampling loop
 
 ### API Surface
 
-The maintained implementation now keeps the two guidance strategies separate.
+The maintained implementation supports both guidance strategies and keeps them separate in the public API.
 
 Classifier-free guidance uses the existing target-conditioning API:
 
@@ -896,6 +924,11 @@ when the model was trained with CFG support.
 
 If post-hoc guidance is requested, the generator uses the null-target branch for the generative condition
 and injects target pressure only through the separate predictor gradient.
+
+The implementation does not combine both mechanisms in a single sampling call. Choose either:
+
+- CFG through `desired_target` plus `guidance_scale`, or
+- post-hoc classifier/regression guidance through the predictor-specific guided methods.
 
 ## Final Projection at Inference
 

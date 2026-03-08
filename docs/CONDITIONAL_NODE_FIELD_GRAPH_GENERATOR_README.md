@@ -8,6 +8,7 @@ Implementation anchors:
 - [`../conditional_node_field_graph_generator/conditional_node_field_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_generator.py)
 - [`CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
 - [`CONDITIONAL_NODE_FIELD_README.md`](CONDITIONAL_NODE_FIELD_README.md)
+- [`MAIN_CLASS_INTERFACES_README.md`](MAIN_CLASS_INTERFACES_README.md)
 
 ## Scope
 
@@ -459,9 +460,20 @@ The graph-level conditioning abstraction supports:
 - random generation,
 - interpolation,
 - mean-graph synthesis,
-- conditional guidance.
+- conditional guidance through both supported routes:
+- classifier-free guidance (CFG) via target-conditioning channels,
+- separate post-hoc guidance via an auxiliary classifier or regressor.
 
 The same decode machinery is reused across all of them.
+
+Those two guidance modes are both supported by the maintained implementation, but they use different
+public APIs so the semantics stay explicit:
+
+- CFG uses the ordinary `decode(...)`, `sample(...)`, and `conditional_sample(...)` path with
+  `desired_target` plus `guidance_scale`.
+- Post-hoc guidance uses the dedicated classifier-guided and regression-guided decode/sample methods.
+
+They are documented in more detail in `CONDITIONAL_NODE_FIELD_README.md`.
 
 ### Explicit Failure Modes
 
