@@ -509,6 +509,32 @@ def _zinc_graph_bucket_path(dataset_dir: Path, node_count: int) -> Path:
     return dataset_dir / "graph_corpus" / f"graphs_nodes_{int(node_count):03d}.pkl"
 
 
+def _zinc_graph_bucket_relative_path(node_count: int) -> Path:
+    return Path("graph_corpus") / f"graphs_nodes_{int(node_count):03d}.pkl"
+
+
+def _normalize_zinc_cached_path(dataset_dir: Path, cached_path: Path | str) -> str:
+    path = Path(cached_path).expanduser()
+    if not path.is_absolute():
+        return str(path)
+    try:
+        return str(path.relative_to(dataset_dir))
+    except ValueError:
+        return str(path)
+
+
+def _resolve_zinc_bucket_path(dataset_dir: Path, cached_path: Path | str, node_count: int) -> Path:
+    path = Path(cached_path).expanduser()
+    if not path.is_absolute():
+        return (dataset_dir / path).resolve()
+    if path.exists():
+        return path
+    # Older manifests stored absolute paths, which break when the synced
+    # dataset moves to a different filesystem root. Fall back to the
+    # canonical bucket location for the current dataset directory.
+    return _zinc_graph_bucket_path(dataset_dir, node_count)
+
+
 def _normalize_zinc_corpus_manifest(dataset_dir: Path, manifest: dict) -> tuple[dict, bool]:
     """Backfill derived fields for older cached manifests."""
     normalized = dict(manifest)
@@ -522,17 +548,24 @@ def _normalize_zinc_corpus_manifest(dataset_dir: Path, manifest: dict) -> tuple[
     bucket_files = normalized.get("bucket_files")
     if bucket_files is None:
         normalized["bucket_files"] = {
-            node_count: str(_zinc_graph_bucket_path(dataset_dir, node_count))
+            node_count: str(_zinc_graph_bucket_relative_path(node_count))
             for node_count in node_counts
         }
         changed = True
     else:
         normalized_bucket_files = {
-            int(node_count): str(Path(bucket_path).expanduser().resolve())
+            int(node_count): _normalize_zinc_cached_path(dataset_dir, bucket_path)
             for node_count, bucket_path in bucket_files.items()
         }
         if normalized_bucket_files != bucket_files:
             normalized["bucket_files"] = normalized_bucket_files
+            changed = True
+
+    csv_path = normalized.get("csv_path")
+    if csv_path is not None:
+        normalized_csv_path = _normalize_zinc_cached_path(dataset_dir, csv_path)
+        if normalized_csv_path != csv_path:
+            normalized["csv_path"] = normalized_csv_path
             changed = True
 
     return normalized, changed
@@ -604,11 +637,14 @@ def build_zinc_graph_corpus(
         total_graphs += len(items)
 
     manifest = {
-        "csv_path": str(Path(csv_path).expanduser().resolve()),
+        "csv_path": _normalize_zinc_cached_path(dataset_dir, csv_path),
         "total_graphs": total_graphs,
         "invalid_smiles_count": invalid_smiles_count,
         "node_counts": node_counts,
-        "bucket_files": {node_count: str(_zinc_graph_bucket_path(dataset_dir, node_count)) for node_count in node_counts},
+        "bucket_files": {
+            node_count: str(_zinc_graph_bucket_relative_path(node_count))
+            for node_count in node_counts
+        },
     }
     with open(manifest_path, "wb") as handle:
         pickle.dump(manifest, handle)
@@ -641,7 +677,11 @@ def load_zinc_graph_dataset(
     graphs = []
     metadata_rows = []
     for node_count in selected_node_counts:
-        bucket_path = Path(manifest["bucket_files"][node_count])
+        bucket_path = _resolve_zinc_bucket_path(
+            dataset_dir,
+            manifest["bucket_files"][node_count],
+            node_count,
+        )
         with open(bucket_path, "rb") as handle:
             items = pickle.load(handle)
         normalized_items, changed = _normalize_zinc_bucket_items(items)
