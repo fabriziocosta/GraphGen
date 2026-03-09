@@ -6,16 +6,20 @@ It complements the architecture documents:
 
 - [`2_CONDITIONAL_NODE_FIELD_README.md`](2_CONDITIONAL_NODE_FIELD_README.md)
 - [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md)
+- [`2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md)
 - [`1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md`](1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md)
 - [`3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
-- [`4_TARGET_GUIDANCE_README.md`](4_TARGET_GUIDANCE_README.md)
+- [`2D_TARGET_GUIDANCE_README.md`](2D_TARGET_GUIDANCE_README.md)
 
 The conceptual discussion of the conditioning interface itself, including single-vector conditioning
 versus token-sequence conditioning under cross-attention, lives in
 [`2_CONDITIONAL_NODE_FIELD_README.md`](2_CONDITIONAL_NODE_FIELD_README.md).
 
-The detailed training, loss, and metrics discussion lives in
+The detailed training and loss discussion lives in
 [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md).
+
+The optimization, hyperparameter, and metrics discussion lives in
+[`2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md).
 
 The goal here is practical:
 
@@ -285,7 +289,7 @@ ConditionalNodeFieldGenerator(
   Logging interval during training.
   Increase: less log noise.
   Decrease: more detailed training traces.
-  Important: see the `Training Metrics` section in [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md).
+  Important: see the `Training Metrics` section in [`2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md).
 
 - `enable_early_stopping`
   Whether to stop based on validation behavior.

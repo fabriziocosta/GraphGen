@@ -9,8 +9,9 @@ Implementation anchors:
 - [`3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
 - [`2_CONDITIONAL_NODE_FIELD_README.md`](2_CONDITIONAL_NODE_FIELD_README.md)
 - [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md)
-- [`4_TARGET_GUIDANCE_README.md`](4_TARGET_GUIDANCE_README.md)
-- [`5_MAIN_CLASS_INTERFACES_README.md`](5_MAIN_CLASS_INTERFACES_README.md)
+- [`2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md)
+- [`2D_TARGET_GUIDANCE_README.md`](2D_TARGET_GUIDANCE_README.md)
+- [`4_MAIN_CLASS_INTERFACES_README.md`](4_MAIN_CLASS_INTERFACES_README.md)
 
 ## Scope
 
@@ -110,7 +111,7 @@ It predicts:
 - optional edge probabilities,
 - optional edge labels.
 
-The internal Conditional Node Field mechanics are described in [`2_CONDITIONAL_NODE_FIELD_README.md`](2_CONDITIONAL_NODE_FIELD_README.md), and the training/loss details are described in [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md).
+The internal Conditional Node Field mechanics are described in [`2_CONDITIONAL_NODE_FIELD_README.md`](2_CONDITIONAL_NODE_FIELD_README.md), the training/loss details are described in [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md), and the hyperparameter/metrics interpretation is described in [`2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md).
 
 ### 4. Graph Decoder
 
@@ -474,7 +475,7 @@ The two supported guidance modes are:
   `desired_target` plus `guidance_scale`
 - separate post-hoc guidance through the predictor-specific classifier-guided and regression-guided methods
 
-They are documented in detail in [`4_TARGET_GUIDANCE_README.md`](4_TARGET_GUIDANCE_README.md).
+They are documented in detail in [`2D_TARGET_GUIDANCE_README.md`](2D_TARGET_GUIDANCE_README.md).
 
 ### Explicit Failure Modes
 
@@ -565,6 +566,7 @@ For someone new to the codebase, the fastest way to build accurate context is:
 2. this file
 3. [`2_CONDITIONAL_NODE_FIELD_README.md`](2_CONDITIONAL_NODE_FIELD_README.md)
 4. [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md)
-5. [`3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
-5. [`../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py)
-6. [`../conditional_node_field_graph_generator/conditional_node_field_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_generator.py)
+5. [`2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md)
+6. [`3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
+7. [`../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_graph_generator.py)
+8. [`../conditional_node_field_graph_generator/conditional_node_field_generator.py`](../conditional_node_field_graph_generator/conditional_node_field_generator.py)

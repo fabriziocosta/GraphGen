@@ -7,19 +7,23 @@ The implementation lives primarily in
 
 ## Documentation Map
 
-This document is the main conceptual reference for the Conditional Node Field model itself: the energy-based interpretation, how conditioning enters, how the backbone is organized, and how the generator behaves structurally. The detailed training, loss, hyperparameter, and metrics discussion now lives in [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md). The dedicated target-guidance discussion lives in [`4_TARGET_GUIDANCE_README.md`](4_TARGET_GUIDANCE_README.md).
+This document is the main conceptual reference for the Conditional Node Field model itself: the energy-based interpretation, how conditioning enters, how the backbone is organized, and how the generator behaves structurally. The detailed training-loss discussion now lives in [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md), and the optimization, hyperparameter, and metrics discussion now lives in [`2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md). The dedicated target-guidance discussion lives in [`2D_TARGET_GUIDANCE_README.md`](2D_TARGET_GUIDANCE_README.md).
 
 The rest of the documentation is organized around the other layers of the stack:
 
 [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md)
 
-This companion document covers the operational side of the model: auxiliary losses, the full training objective, sampling updates, inference-time projection, hyperparameters, and training metrics.
+This companion document covers the training-loss side of the model: auxiliary losses, the full training objective, sampling updates, inference-time projection, and masking behavior.
 
-[`4_TARGET_GUIDANCE_README.md`](4_TARGET_GUIDANCE_README.md)
+[`2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md)
+
+This companion document covers optimization-facing practice: hyperparameters, lambda interpretation, training metrics, and verbose epoch-summary semantics.
+
+[`2D_TARGET_GUIDANCE_README.md`](2D_TARGET_GUIDANCE_README.md)
 
 This document is the dedicated reference for the two supported target-guidance routes: classifier-free guidance (CFG) and separate post-hoc guidance through an auxiliary classifier or regressor.
 
-[`5_MAIN_CLASS_INTERFACES_README.md`](5_MAIN_CLASS_INTERFACES_README.md)
+[`4_MAIN_CLASS_INTERFACES_README.md`](4_MAIN_CLASS_INTERFACES_README.md)
 
 This is the API reference. It collects the main public classes in one place, shows their primary constructors and workflow methods, explains the meaning of each important parameter, and summarizes the practical effect of increasing or decreasing those parameters. Use it when you want a user-facing interface guide rather than the modeling details.
 
@@ -440,7 +444,7 @@ That estimate is then reused for auxiliary supervised heads.
 
 ## Companion Operational Reference
 
-The full operational discussion now lives in [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md), including:
+The full operational discussion now lives across [`2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md) and [`2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md), including:
 
 - auxiliary and structural losses,
 - the total training objective,

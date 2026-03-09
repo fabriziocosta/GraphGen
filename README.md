@@ -20,17 +20,21 @@ This is the main conceptual and modeling document. It explains the Conditional N
 
 [`docs/2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md`](docs/2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md)
 
-This companion document covers the operational behavior of the node model. It explains the auxiliary losses, the full training objective, sampling updates, inference-time projection, main hyperparameters, and the interpretation of logged training metrics.
+This companion document covers the training-loss behavior of the node model. It explains the auxiliary losses, the full training objective, sampling updates, inference-time projection, and masking behavior.
+
+[`docs/2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md`](docs/2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md)
+
+This companion document covers optimization-facing practice. It explains the main hyperparameters, lambda interpretation, recorded metrics, and the semantics of the verbose epoch summaries.
 
 [`docs/3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md`](docs/3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md)
 
 This document covers the decoder and constraint-solving stage. It explains how node-level predictions are converted into final `networkx` graphs, how edge probabilities and predicted degrees are reconciled, how connectivity constraints are enforced, and how the ILP-based adjacency projection behaves.
 
-[`docs/4_TARGET_GUIDANCE_README.md`](docs/4_TARGET_GUIDANCE_README.md)
+[`docs/2D_TARGET_GUIDANCE_README.md`](docs/2D_TARGET_GUIDANCE_README.md)
 
 This document is dedicated to target guidance. It explains the two supported approaches, classifier-free guidance (CFG) and separate post-hoc guidance through an auxiliary classifier or regressor, and makes the API split between them explicit.
 
-[`docs/5_MAIN_CLASS_INTERFACES_README.md`](docs/5_MAIN_CLASS_INTERFACES_README.md)
+[`docs/4_MAIN_CLASS_INTERFACES_README.md`](docs/4_MAIN_CLASS_INTERFACES_README.md)
 
 This is the interface reference for the main public classes. It summarizes the constructor and workflow methods for the batch dataclasses, the node generator, the graph decoder, and the graph generator, and it explains what the main parameters mean together with the practical effect of increasing or decreasing them.
 
@@ -71,9 +75,10 @@ NodeField/
 │   ├── 1_CONDITIONAL_NODE_FIELD_GRAPH_GENERATOR_README.md
 │   ├── 2_CONDITIONAL_NODE_FIELD_README.md
 │   ├── 2B_CONDITIONAL_NODE_FIELD_TRAINING_README.md
+│   ├── 2C_CONDITIONAL_NODE_FIELD_OPTIMIZATION_README.md
 │   ├── 3_CONDITIONAL_NODE_FIELD_GRAPH_DECODER_README.md
-│   ├── 4_TARGET_GUIDANCE_README.md
-│   ├── 5_MAIN_CLASS_INTERFACES_README.md
+│   ├── 2D_TARGET_GUIDANCE_README.md
+│   ├── 4_MAIN_CLASS_INTERFACES_README.md
 │   ├── extensions/
 │   │   ├── demo/
 │   │   │   └── README.md
@@ -155,7 +160,7 @@ By default, `.sample(...)` reuses cached graph-level conditioning rows from the 
 
 When guidance targets are available, sampling can also use classifier-free conditioning through
 `desired_target` and `guidance_scale`. The detailed mechanics are documented in
-[`docs/4_TARGET_GUIDANCE_README.md`](docs/4_TARGET_GUIDANCE_README.md).
+[`docs/2D_TARGET_GUIDANCE_README.md`](docs/2D_TARGET_GUIDANCE_README.md).
 
 Notebook examples:
 - `notebooks/demo.ipynb`
